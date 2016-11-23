@@ -136,7 +136,7 @@ public class Keystone
 			try {
 				httpResponse = httpClient.execute(postRequest);
 				responseCode = httpResponse.getStatusLine().getStatusCode();
-				LOGGER.info("Admin Autentication status "+ responseCode);
+				LOGGER.info("Admin Authentication status "+ responseCode);
 				if(responseCode == 201)
 				{
 					status = StatusCode.SUCCESS;
@@ -195,36 +195,14 @@ public class Keystone
 					"passwordCredentials\":{\"username\":\""+
 					mSwiftUserId+"\",\"password\":\"" +
 					mSwiftPassword+"\"},\"tenantName\":\"" +
-					mSwiftTenantName +"\"}}");			
+					mSwiftTenantName +"\"}}");
 			else if(mAuthURL.contains("v3")) {
-				if (!mSwiftUserId.equals("") && !mSwiftProjectId.equals("")) {
-					entity = new StringEntity("{\"auth\": {" + "\"identity\": {"
-							+ "\"methods\": [" + "\"password\"],\"password\": "
-							+ "{\"user\": {\"id\": \""+ mSwiftUserId + "\","
-							+ "\"password\": \"" + mSwiftPassword + "\"}}},"+ 
-							"\"scope\": {\"project\": {\"id\": \"" 
-							+ mSwiftProjectId + "\"}}}}");
-				} else if (!mAdminUserName.equals("") && 
-						!mAdminDomainName.equals("")) {
-					entity = new StringEntity("{\"auth\":{\"identity\":"
-							 + "{\"methods\":" + "[\"password\"],\"password\":"
-							 + "{\"user\":{\"name\":\"" + mAdminUserName + "\","
-							 + "\"domain\":" + "{ \"name\":\"" + mAdminDomainName 
-							 + "\"},\"password\":\"" + mAdminPassword + "\"}}},"
-							 + "\"scope\":{\"project\":{\"name\":\"" + 
-							 mAdminUserName + "\",\"domain\":"
-							 + "{ \"name\":\"" + mAdminDomainName + "\"}}}}}");
-				} else if (!mAdminUserName.equals("") && 
-						!mAdminDomainId.equals("")) {
-					entity = new StringEntity("{\"auth\":{\"identity\":"
-							 + "{\"methods\":" + "[\"password\"],\"password\":"
-							 + "{\"user\":{\"name\":\"" + mAdminUserName + "\","
-							 + "\"domain\":" + "{ \"id\":\"" + mAdminDomainId 
-							 + "\"},\"password\":\"" + mAdminPassword + "\"}}}," 
-							 + "\"scope\":{\"project\":{\"name\":\"" 
-							 + mAdminUserName + "\",\"domain\":"
-							 + "{ \"id\":\"" + mAdminDomainId + "\"}}}}}");
-				}
+				entity = new StringEntity("{\"auth\": {" + "\"identity\": {"
+						+ "\"methods\": [" + "\"password\"],\"password\": "
+						+ "{\"user\": {\"id\": \""+ mSwiftUserId + "\","
+						+ "\"password\": \"" + mSwiftPassword + "\"}}},"+ 
+						"\"scope\": {\"project\": {\"id\": \"" 
+						+ mSwiftProjectId + "\"}}}}");
 			}
 
 			headers.add(new BasicNameValuePair("Content-Type","application/json"));
@@ -237,8 +215,8 @@ public class Keystone
 
 			try {				
 				httpResponse = httpClient.execute(postRequest);
-				responseCode = httpResponse.getStatusLine().getStatusCode();			
-				LOGGER.info("Autentication status "+ responseCode);
+				responseCode = httpResponse.getStatusLine().getStatusCode();
+				LOGGER.info("User Authentication status "+ responseCode);
 				if (responseCode == 201) {
 					err = StatusCode.SUCCESS;
 					Header[] headerss = httpResponse.getAllHeaders();
@@ -461,7 +439,7 @@ public class Keystone
 				mSwiftUserId = user_token;
 				mSwiftProjectId = project;
 				try {
-					String encPassword = getPasswordAndChunkSize(mSwiftUserId);
+					String encPassword = getPassword(mSwiftUserId);
 					if (encPassword == null || encPassword.equals(""))
 						return StatusCode.OBJECT_NOT_FOUND;
 					mSwiftPassword = decryptPassword(encPassword);
@@ -489,7 +467,7 @@ public class Keystone
 	 * params : response stream
 	 * returns : output string
 	 */
-	String getPasswordAndChunkSize(String userId) throws IOException
+	String getPassword(String userId) throws IOException
 	{
 		Properties prop = new Properties();
 		String password = "";

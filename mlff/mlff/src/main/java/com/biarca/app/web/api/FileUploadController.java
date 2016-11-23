@@ -197,20 +197,22 @@ public class FileUploadController {
 			ClientProtocolException, IllegalStateException, IOException,
 			ServletException {
 
-	  String requestURI = req.getRequestURI();
-
 	  StatusCode statusCode = null;
-	  String date = req.getHeader("Date");
-	  String authorization = req.getHeader("Authorization");
-	  String contentType = req.getHeader("Content-type");
-	  String content_MD5 = req.getHeader("Content-MD5");
-	  String contentLength = req.getHeader("Content-length");
-
+	  String requestURI = req.getRequestURI();
 	  String pattern = (String) req.getAttribute(
 			  HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
 
-	  String fileName = new AntPathMatcher().extractPathWithinPattern(pattern, 
+	  String fileName = new AntPathMatcher().extractPathWithinPattern(pattern,
 			  req.getServletPath());
+	  String contentLength = req.getHeader("Content-length");
+	  if (contentLength == null || contentLength.equals("")) {
+		  LOGGER.info("In uploadObject, Unable to get Content Length for "+ 
+				  fileName);
+		  return new ResponseEntity<String>(HttpStatus.BAD_REQUEST);
+	  }
+
+	  String authorization = req.getHeader("Authorization");
+	  String contentType = req.getHeader("Content-type");
 
 	  Double length = Swift.getFileLengthInGb(Long.parseLong(contentLength));
 	  if (length > Swift.mFileMaxSizeInGB) {
@@ -220,42 +222,46 @@ public class FileUploadController {
 		  StringBuilder lastModified = new StringBuilder();
 		  StringBuilder transId = new StringBuilder();
 		  StringBuilder swiftDate = new StringBuilder();
+		  Keystone keystone = new Keystone();
 
 		  try
 		  {
-			  Keystone keystone = new Keystone();
 			  statusCode = keystone.getAdminAuthenticationToken();
-			  if (statusCode == StatusCode.SUCCESS) {
-				  String ec2_tmp[] = authorization.split(":");
-				  String ec2[] = ec2_tmp[0].split(" ");
-
-				  statusCode = keystone.getEC2Details(ec2[1]);
+			  if (statusCode != StatusCode.SUCCESS) {
 				  if (statusCode == StatusCode.INVALID_CREDENTIALS)
 					  return new ResponseEntity<String>(HttpStatus.UNAUTHORIZED);
 				  else if (statusCode == StatusCode.OBJECT_NOT_FOUND)
 					  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
-
-				  statusCode = keystone.getAuthenticationToken();
-				  if (statusCode == StatusCode.SUCCESS) {
-					  Swift swift = new Swift();
-					  statusCode = swift.prepareUploadFile(keystone, bucket,
-							  fileName, contentLength, req.getInputStream(),
-							  etag, lastModified, transId, swiftDate);
-				  }
-				  else if (statusCode == StatusCode.INVALID_CREDENTIALS)
-					  return new ResponseEntity<String>(HttpStatus.UNAUTHORIZED);
-				  else if (statusCode == StatusCode.PERMISSION_DENIED)
-					  return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
-			  	} else if (statusCode == StatusCode.INVALID_CREDENTIALS)
-					  return new ResponseEntity<String>(HttpStatus.UNAUTHORIZED);
-				  else if (statusCode == StatusCode.PERMISSION_DENIED)
-					  return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
+				  else
+					  return new ResponseEntity<String>(
+							  HttpStatus.INTERNAL_SERVER_ERROR);
 			  }
-			  catch (Exception e)
-			  {
-				LOGGER.error(e.toString());	
+			  String ec2_tmp[] = authorization.split(":");
+			  String ec2[] = ec2_tmp[0].split(" ");
+			  statusCode = keystone.getEC2Details(ec2[1]);
+			  if (statusCode != StatusCode.SUCCESS) {
+				  if (statusCode == StatusCode.INVALID_CREDENTIALS)
+					  return new ResponseEntity<String>(HttpStatus.UNAUTHORIZED);
+				  else if (statusCode == StatusCode.OBJECT_NOT_FOUND)
+					  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
+				  else
+					  return new ResponseEntity<String>(
+							  HttpStatus.INTERNAL_SERVER_ERROR);
 			  }
-
+			  statusCode = keystone.getAuthenticationToken();
+			  if (statusCode != StatusCode.SUCCESS) {
+				  if (statusCode == StatusCode.INVALID_CREDENTIALS)
+					  return new ResponseEntity<String>(HttpStatus.UNAUTHORIZED);
+				  else if (statusCode == StatusCode.OBJECT_NOT_FOUND)
+					  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
+				  else
+					  return new ResponseEntity<String>(
+							  HttpStatus.INTERNAL_SERVER_ERROR);
+			  }
+			  Swift swift = new Swift();
+			  statusCode = swift.prepareUploadFile(keystone, bucket,
+					  fileName, contentLength, req.getInputStream(),
+					  etag, lastModified, transId, swiftDate);
 			  response.addHeader("Content-type", "text/html; charset=UTF-16");
 			  response.addHeader("Date", swiftDate.toString());
 			  response.addHeader("x-amz-id-2", transId.toString());
@@ -269,20 +275,29 @@ public class FileUploadController {
 			  }
 			  else if (statusCode == StatusCode.PERMISSION_DENIED)
 				  return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
-			  else if (statusCode == StatusCode.OBJECT_NOT_FOUND) {
+			  else if (statusCode == StatusCode.OBJECT_NOT_FOUND)
 				  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
-			  }
 			  else if (statusCode == StatusCode.INVALID_PARAMETERS)
 				  return new ResponseEntity<StringBuilder>(
-						  HttpStatus.BAD_REQUEST);
+					  HttpStatus.BAD_REQUEST);
 			  else if (statusCode == StatusCode.CONTENT_MISMATCH)
 				  return new ResponseEntity<String>(
 						  HttpStatus.PRECONDITION_FAILED);
 			  else
-				  return new ResponseEntity<String>(HttpStatus.BAD_REQUEST);
+				  return new ResponseEntity<String>(
+						  HttpStatus.INTERNAL_SERVER_ERROR);
+		  }
+		  catch (Exception e)
+		  {
+			LOGGER.error(e.toString());	
+		  }
+		  return new ResponseEntity<String>(
+				  HttpStatus.INTERNAL_SERVER_ERROR);
 	  }
 	  else
 	  {
+		  String date = req.getHeader("Date");
+		  String content_MD5 = req.getHeader("Content-MD5");
 		  try
 		  {
 			  StringBuilder objectName =
@@ -373,6 +388,7 @@ public class FileUploadController {
 	  		inputStream.close();
 	  		inputStream = null;
 	  	}
+
 	  	return respEntity;
 	}
 

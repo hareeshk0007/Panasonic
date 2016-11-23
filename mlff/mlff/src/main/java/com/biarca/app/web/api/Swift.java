@@ -53,17 +53,6 @@ public class Swift
 	String path = "";
 	public static Socket socket = null;
 
-	//byte[] buffer2 = new byte[mSplitFileSize + 8192];
-	/*DataOutputStream dos = null;
-	BufferedReader br = null;
-	Socket socket = null;
-	SSLSocket sslSocket = null;
-	int save = 0;
-	String formatted = "";
-	String fileName = "";
-	long now  = 0L;
-	Keystone keystone;*/
-
 	/*
 	 * Default Constructor
 	 *
@@ -74,38 +63,6 @@ public class Swift
 	Swift()
 	{
 	}
-	
-	/*
-	 * Constructor to initialize each thread
-	 *
-	 * params : buffer2
-	 * params : dos
-	 * params : br
-	 * params : socket
-	 * params : save
-	 * params : formatted
-	 * params : fileName
-	 * params : now
-	 * params : keystone
-	 * params : path
-	 * returns : None
-	 * 
-	 */
-	/*public Swift(byte[] buffer2, DataOutputStream dos, BufferedReader br,
-			Socket socket, int save, String formatted,
-			String fileName, long now, Keystone keystone, String path)
-	{
-		this.buffer2 = buffer2;
-		this.dos = dos;
-		this.br = br;
-		this.socket = socket;
-		this.save = save;
-		this.formatted = formatted;
-		this.fileName = fileName;
-		this.now = now;
-		this.keystone = keystone;
-		this.path = path;
-	}*/
 		
 	/*
 	 * prepareUploadFileList : Method initialize the Swift url, and object path
@@ -144,7 +101,7 @@ public class Swift
 			LOGGER.error(e.getMessage());
 		}
 
-		return StatusCode.SUCCESS;
+		return status;
 	}
 
 	/*
@@ -195,7 +152,7 @@ public class Swift
 		byte[] sourceBuffer = new byte[8192];
 		byte[] tempBuffer = new byte[8192];
 		byte[] destBuffer = null;
-		int current = 0;
+		long current = 0;
 		long totalLength = 0;
 		int n = 0;
 		int prevReadBytes = 0;
@@ -211,8 +168,9 @@ public class Swift
 
 		while ((n = instream.read(sourceBuffer)) != -1)
 		{
-			if (prevReadBytes == 0)
+			if (prevReadBytes == 0) {
 				destBuffer = new byte[mSplitFileSize];
+			}
 			md.update(sourceBuffer, 0, n);
 			current = current + n;
 			totalLength = totalLength + n;
@@ -228,7 +186,7 @@ public class Swift
 					(isSizeExceeded == false)) &&
 					totalLength <= Long.valueOf(contentLength)) {
 				System.arraycopy(sourceBuffer, 0, destBuffer, prevReadBytes, n);
-				prevReadBytes = current + remaining2;
+				prevReadBytes = (int) current + remaining2;
 				isSizeExceeded = false;
 			}
 			if ((current + remaining2) > mSplitFileSize) {
@@ -303,6 +261,7 @@ public class Swift
 							break;
 						}
 						else {
+							statusCode = StatusCode.UNKNOWN;
 							LOGGER.info("Error Code : " + line + " : " +
 									fileName + "/" + now + "/" + formatted);
 							break;
@@ -408,85 +367,4 @@ public class Swift
 					mdbytes[i] & 0xff) + 0x100, 16).substring(1));
 		return mMetaData.toString(); 
 	}
-
-	/*
-	 * run : Method to transfer the chunk to Swift.
-	 *
-	 * params : None
-	 * returns : None
-	 */
-	/*@Override
-	public void run() {
-		try {
-			/*String etag = calculateMD5CheckSum(buffer2, save);
-	
-			LOGGER.info("Chunk : "  + fileName + "/" + now + "/" 
-					+ formatted + " is uploading");
-			
-			dos.write(("PUT " + path + " HTTP/1.0\r\n").getBytes());
-			dos.write(("Content-Length: "+ save + "\r\n").getBytes());
-			dos.write(("X-Auth-Token: " + keystone.mSwiftToken
-					+ "\n").getBytes());
-			dos.write(("ETag: " + etag + "\n").getBytes());
-			dos.write(("\n").getBytes());
-			dos.write(buffer2, 0, save);
-			dos.flush();
-
-			String line = "";
-			while((line = br.readLine()) != null)
-			{
-				if(line.contains("HTTP/1.1 201"))
-				{
-					LOGGER.info(fileName + "/" + now + "/" + formatted
-					+ " Uploaded to container ");
-					break;
-				}						
-				else if(line.contains("HTTP/1.1 401"))
-				{
-					LOGGER.info("Invalid credentials : " + 
-							fileName + "/" + now + "/" + formatted);
-					break;
-				}
-				else if(line.contains("HTTP/1.1 403"))
-				{
-					LOGGER.info("Permission denied : " + 
-							fileName + "/" + now + "/" + formatted);
-					break;
-				}
-				else if(line.contains("HTTP/1.1 404"))
-				{
-					LOGGER.info("Bucket not found : "+ 
-							fileName + "/" + now + "/" + formatted);
-					break;
-				}
-				else if(line.contains("HTTP/1.1 422 Unprocessable Entity"))
-				{
-					LOGGER.info("HTTP/1.1 422 Unprocessable Entity : " + 
-							fileName + "/" + now + "/" + formatted);
-					break;
-				}
-				else {
-					LOGGER.info("Error Code : " + line + " : " +
-							fileName + "/" + now + "/" + formatted);
-					break;
-				}
-			}
-		}
-		catch(Exception e)
-		{
-		}
-		finally
-		{
-			try {
-				br.close();
-			} catch (IOException e) {				
-				e.printStackTrace();
-			}
-			try {
-				dos.close();
-			} catch (IOException e) {				
-				e.printStackTrace();
-			}
-		}
-	}*/
 }
