@@ -112,15 +112,16 @@ public class Main {
 		Keystone.mAdminProjectId = prop.getProperty("projectid");
 		Keystone.s3URL = prop.getProperty("s3_url");
 		if (prop.getProperty("chunk_size") != null) {
-			Swift.mSplitFileSize = (int) Long.parseLong(
-					prop.getProperty("chunk_size"));
-			if (Swift.mSplitFileSize > maxBufferSize ||
+			if (Long.parseLong(
+					prop.getProperty("chunk_size")) > maxBufferSize ||
 					Swift.mSplitFileSize < 0) {
 					System.out.println("Maximum allowed chunk size is " +
 							maxBufferSize);
 					status = StatusCode.INVALID_PARAMETERS;
 			}
 		}
+		Swift.mSplitFileSize = (int) Long.parseLong(
+				prop.getProperty("chunk_size"));
 		String password = prop.getProperty("password");
 		try {
 			Keystone.mAdminPassword = Keystone.decryptPassword(password);
