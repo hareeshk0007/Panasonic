@@ -149,56 +149,25 @@ public class Swift
 		DataOutputStream dos = null;
 		BufferedReader br = null;
 		String formatted = "";
-		byte[] sourceBuffer = new byte[8192];
-		byte[] tempBuffer = new byte[8192];
 		byte[] destBuffer = null;
 		long current = 0;
 		long totalLength = 0;
 		int n = 0;
 		int prevReadBytes = 0;
-		int remaining = 0;
-		int remaining2 = 0;
-		int balance = 0;
-		boolean isSizeExceeded = false;
 		MessageDigest md = MessageDigest.getInstance("MD5");
 		long now = Instant.now().toEpochMilli();
 
 		LOGGER.info("Chunks count " + 
 				(((long) Long.valueOf(contentLength) / mSplitFileSize) + 1));
-
-		while ((n = instream.read(sourceBuffer)) != -1)
+		destBuffer = new byte[mSplitFileSize];
+		while ((n = instream.read(destBuffer, prevReadBytes,
+				(mSplitFileSize - prevReadBytes))) != -1)
 		{
-			if (prevReadBytes == 0) {
-				destBuffer = new byte[mSplitFileSize];
-			}
-			md.update(sourceBuffer, 0, n);
+			md.update(destBuffer, prevReadBytes, n);
 			current = current + n;
 			totalLength = totalLength + n;
-
-			if ((remaining > 0) && (isSizeExceeded == true)) {
-				System.arraycopy(tempBuffer, 0, destBuffer, prevReadBytes,
-						remaining);
-				prevReadBytes = remaining;
-				remaining2 = remaining;
-				isSizeExceeded = false;
-			}
-			if ((((current + remaining2) <= mSplitFileSize) && 
-					(isSizeExceeded == false)) &&
-					totalLength <= Long.valueOf(contentLength)) {
-				System.arraycopy(sourceBuffer, 0, destBuffer, prevReadBytes, n);
-				prevReadBytes = (int) current + remaining2;
-				isSizeExceeded = false;
-			}
-			if ((current + remaining2) > mSplitFileSize) {
-				remaining = 0;
-				balance = mSplitFileSize - prevReadBytes;
-				remaining = n - balance;
-				System.arraycopy(sourceBuffer, 0, destBuffer,
-						prevReadBytes, balance);
-				System.arraycopy(sourceBuffer, balance, tempBuffer, 0, remaining);
-				isSizeExceeded = true;
-			}
-			if (((current + remaining2) >= mSplitFileSize) ||
+			prevReadBytes += n;
+			if ((prevReadBytes >= mSplitFileSize) ||
 					totalLength >= Long.valueOf(contentLength)) {
 				formatted = String.format("%08d", partCounter);
 
@@ -210,25 +179,20 @@ public class Swift
 					br = new BufferedReader(
 							new InputStreamReader(socket.getInputStream()));
 
-					String checksum = calculateMD5CheckSum(destBuffer,
-							(prevReadBytes + balance));
+					String checksum = calculateMD5CheckSum(destBuffer, prevReadBytes);
 					LOGGER.info("Chunk : "  + fileName + "/" + now + "/"
-							+ formatted + " is uploading, size : "+
-							(prevReadBytes + balance));
+							+ formatted + " is uploading, size : "+ prevReadBytes);
 
 					dos.write(("PUT " + path + " HTTP/1.0\r\n").getBytes());
-					dos.write(("Content-Length: "+
-							(prevReadBytes + balance) + "\r\n").getBytes());
+					dos.write(("Content-Length: "+ prevReadBytes + "\r\n").getBytes());
 					dos.write(("X-Auth-Token: " + keystone.mSwiftToken
 							+ "\r\n").getBytes());
 					dos.write(("ETag: " + checksum + "\r\n").getBytes());
 					dos.write(("\n").getBytes());
-					dos.write(destBuffer, 0, (prevReadBytes + balance));
+					dos.write(destBuffer, 0, prevReadBytes);
 					dos.flush();
 
 					prevReadBytes = 0;
-					remaining2 = 0;
-					balance = 0;
 
 					String line = "";
 					while((line = br.readLine()) != null)
@@ -274,7 +238,6 @@ public class Swift
 				finally {
 					br.close();
 					dos.close();
-					destBuffer = null;
 					System.gc();
 				}
 				partCounter++;
@@ -293,10 +256,7 @@ public class Swift
 		for(int j = 0; j < mdbytes.length; j++)
 			etag.append(Integer.toString((
 					mdbytes[j] & 0xff) + 0x100, 16).substring(1));
-
-		sourceBuffer = null;
 		destBuffer = null;
-		tempBuffer = null;
 
 		try {
 			// Sending the Manifest
