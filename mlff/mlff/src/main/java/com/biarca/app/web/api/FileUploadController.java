@@ -259,6 +259,9 @@ public class FileUploadController {
 							  HttpStatus.INTERNAL_SERVER_ERROR);
 			  }
 			  Swift swift = new Swift();
+			  statusCode = swift.getChunkSize();
+			  if (statusCode != StatusCode.SUCCESS)
+				  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
 			  statusCode = swift.prepareUploadFile(keystone, bucket,
 					  fileName, contentLength, req.getInputStream(),
 					  etag, lastModified, transId, swiftDate);

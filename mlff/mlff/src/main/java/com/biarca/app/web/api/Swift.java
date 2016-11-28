@@ -16,6 +16,8 @@ package com.biarca.app.web.api;
 
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -25,6 +27,7 @@ import java.security.NoSuchAlgorithmException;
 import java.text.ParseException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Properties;
 
 import org.apache.http.Header;
 import org.apache.http.NameValuePair;
@@ -47,7 +50,7 @@ public class Swift
 	private static ArrayList<NameValuePair> headers =
 			new ArrayList<NameValuePair>();
 	String object_path = "";
-	public static int mSplitFileSize = 1024 * 1024 * 512; // 512 MB
+	int mSplitFileSize = 1024 * 1024 * 512; // 512 MB
 	public final static int mFileMaxSizeInGB = 5;
 	int part_counter = 0;
 	String path = "";
@@ -63,7 +66,7 @@ public class Swift
 	Swift()
 	{
 	}
-		
+
 	/*
 	 * prepareUploadFileList : Method initialize the Swift url, and object path
 	 *
@@ -150,7 +153,6 @@ public class Swift
 		BufferedReader br = null;
 		String formatted = "";
 		byte[] destBuffer = null;
-		long current = 0;
 		long totalLength = 0;
 		int n = 0;
 		int prevReadBytes = 0;
@@ -164,13 +166,11 @@ public class Swift
 				(mSplitFileSize - prevReadBytes))) != -1)
 		{
 			md.update(destBuffer, prevReadBytes, n);
-			current = current + n;
 			totalLength = totalLength + n;
 			prevReadBytes += n;
 			if ((prevReadBytes >= mSplitFileSize) ||
 					totalLength >= Long.valueOf(contentLength)) {
 				formatted = String.format("%08d", partCounter);
-
 				path = object_path + "/" + bucket + "/" + objectName + "/" +
 						now + "/" + formatted;
 				try {
@@ -179,12 +179,15 @@ public class Swift
 					br = new BufferedReader(
 							new InputStreamReader(socket.getInputStream()));
 
-					String checksum = calculateMD5CheckSum(destBuffer, prevReadBytes);
+					String checksum = calculateMD5CheckSum(destBuffer,
+							prevReadBytes);
 					LOGGER.info("Chunk : "  + fileName + "/" + now + "/"
-							+ formatted + " is uploading, size : "+ prevReadBytes);
+							+ formatted + " is uploading, size : "+
+							prevReadBytes);
 
 					dos.write(("PUT " + path + " HTTP/1.0\r\n").getBytes());
-					dos.write(("Content-Length: "+ prevReadBytes + "\r\n").getBytes());
+					dos.write(("Content-Length: "+ prevReadBytes + "\r\n")
+							.getBytes());
 					dos.write(("X-Auth-Token: " + keystone.mSwiftToken
 							+ "\r\n").getBytes());
 					dos.write(("ETag: " + checksum + "\r\n").getBytes());
@@ -193,8 +196,8 @@ public class Swift
 					dos.flush();
 
 					prevReadBytes = 0;
-
 					String line = "";
+
 					while((line = br.readLine()) != null)
 					{
 						if(line.contains("HTTP/1.1 201")) {
@@ -241,7 +244,6 @@ public class Swift
 					System.gc();
 				}
 				partCounter++;
-				current = 0;
 			}
 			if (statusCode == StatusCode.OBJECT_NOT_FOUND) {
 				instream.close();
@@ -266,8 +268,8 @@ public class Swift
 			headers.clear();
 			headers.add(new BasicNameValuePair("X-Auth-Token",
 					keystone.mSwiftToken));
-			headers.add(new BasicNameValuePair("X-Object-Manifest",  bucket + "/"
-					+ objectName + "/" + now));
+			headers.add(new BasicNameValuePair("X-Object-Manifest",  bucket +
+					"/" + objectName + "/" + now));
 			headers.add(new BasicNameValuePair("X-Object-Meta-ETag", 
 					etag.toString()));
 
@@ -321,10 +323,39 @@ public class Swift
 		md.update(buffer, 0, save);
 		byte[] mdbytes = md.digest();
 
-		StringBuffer mMetaData = new StringBuffer();
+		StringBuffer checksum = new StringBuffer();
 		for(int i = 0; i < mdbytes.length; i++)
-			mMetaData.append(Integer.toString((
+			checksum.append(Integer.toString((
 					mdbytes[i] & 0xff) + 0x100, 16).substring(1));
-		return mMetaData.toString(); 
+		return checksum.toString();
+	}
+
+	/*
+	 * getChunkSize : Get Chunk size
+	 *
+	 * params : none
+	 * returns : StatusCode
+	 */
+	public StatusCode getChunkSize() throws  IOException
+	{
+		Properties prop = new Properties();
+		InputStream is = null;
+		try {
+			is = new FileInputStream(Main.configFile);
+			prop.load(is);
+			if (prop.getProperty("chunk_size") != null) {
+				if (!prop.getProperty("chunk_size").equals(""))
+					mSplitFileSize = Integer.valueOf(
+							prop.getProperty("chunk_size"));
+			} else
+				return StatusCode.INVALID_PARAMETERS;
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+		finally {
+			is.close();
+			prop.clear();
+		}
+		return StatusCode.SUCCESS;
 	}
 }

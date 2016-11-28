@@ -20,13 +20,15 @@ import java.io.InputStream;
 import java.net.URL;
 import java.text.ParseException;
 import java.util.Properties;
+
 import javax.net.SocketFactory;
 import javax.net.ssl.SSLSocketFactory;
+
 import org.apache.http.client.ClientProtocolException;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+
 import com.biarca.app.web.api.Keystone;
-import com.biarca.app.web.api.Swift;
 import com.biarca.app.web.api.Utils.StatusCode;
 
 /*
@@ -114,14 +116,11 @@ public class Main {
 		if (prop.getProperty("chunk_size") != null) {
 			if (Long.parseLong(
 					prop.getProperty("chunk_size")) > maxBufferSize ||
-					Swift.mSplitFileSize < 0) {
-					System.out.println("Maximum allowed chunk size is " +
-							maxBufferSize);
+					Long.parseLong(prop.getProperty("chunk_size")) < 0) {
+					System.out.println("Chunk size limit is 0-2147483645");
 					status = StatusCode.INVALID_PARAMETERS;
 			}
 		}
-		Swift.mSplitFileSize = (int) Long.parseLong(
-				prop.getProperty("chunk_size"));
 		String password = prop.getProperty("password");
 		try {
 			Keystone.mAdminPassword = Keystone.decryptPassword(password);
