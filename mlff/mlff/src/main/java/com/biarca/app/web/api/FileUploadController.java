@@ -226,6 +226,14 @@ public class FileUploadController {
 
 		  try
 		  {
+			  Swift swift = new Swift();
+			  statusCode = swift.getChunkSize();
+			  if (statusCode == StatusCode.INVALID_PARAMETERS) {
+				  LOGGER.info("Unable to get chunk size for file "+  fileName
+						  + ", Chunk size limit is 0-2147483645");
+				  return new ResponseEntity<String>(HttpStatus.BAD_REQUEST);
+			  }
+
 			  statusCode = keystone.getAdminAuthenticationToken();
 			  if (statusCode != StatusCode.SUCCESS) {
 				  if (statusCode == StatusCode.INVALID_CREDENTIALS)
@@ -258,8 +266,6 @@ public class FileUploadController {
 					  return new ResponseEntity<String>(
 							  HttpStatus.INTERNAL_SERVER_ERROR);
 			  }
-			  Swift swift = new Swift();
-			  statusCode = swift.getChunkSize();
 			  if (statusCode != StatusCode.SUCCESS)
 				  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
 			  statusCode = swift.prepareUploadFile(keystone, bucket,

@@ -48,8 +48,6 @@ public class Main {
 	public static String protocol = "";
 	public static String host = "";
 
-	final static int maxBufferSize = 2147483645;
-
 	public static void main(String... args) {
 		try {
 			if (args.length == 0) {
@@ -113,14 +111,6 @@ public class Main {
 		Keystone.mAdminDomainId = prop.getProperty("domainid");
 		Keystone.mAdminProjectId = prop.getProperty("projectid");
 		Keystone.s3URL = prop.getProperty("s3_url");
-		if (prop.getProperty("chunk_size") != null) {
-			if (Long.parseLong(
-					prop.getProperty("chunk_size")) > maxBufferSize ||
-					Long.parseLong(prop.getProperty("chunk_size")) < 0) {
-					System.out.println("Chunk size limit is 0-2147483645");
-					status = StatusCode.INVALID_PARAMETERS;
-			}
-		}
 		String password = prop.getProperty("password");
 		try {
 			Keystone.mAdminPassword = Keystone.decryptPassword(password);

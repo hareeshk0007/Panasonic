@@ -50,11 +50,12 @@ public class Swift
 	private static ArrayList<NameValuePair> headers =
 			new ArrayList<NameValuePair>();
 	String object_path = "";
-	int mSplitFileSize = 1024 * 1024 * 512; // 512 MB
-	public final static int mFileMaxSizeInGB = 5;
+	int mChunkSize = 1024 * 1024 * 512; // 512 MB
+	final static int mFileMaxSizeInGB = 5;
+	final static int maxChunkSize = 2147483645;
 	int part_counter = 0;
 	String path = "";
-	public static Socket socket = null;
+	Socket socket = null;
 
 	/*
 	 * Default Constructor
@@ -160,15 +161,15 @@ public class Swift
 		long now = Instant.now().toEpochMilli();
 
 		LOGGER.info("Chunks count " + 
-				(((long) Long.valueOf(contentLength) / mSplitFileSize) + 1));
-		destBuffer = new byte[mSplitFileSize];
+				(((long) Long.valueOf(contentLength) / mChunkSize) + 1));
+		destBuffer = new byte[mChunkSize];
 		while ((n = instream.read(destBuffer, prevReadBytes,
-				(mSplitFileSize - prevReadBytes))) != -1)
+				(mChunkSize - prevReadBytes))) != -1)
 		{
 			md.update(destBuffer, prevReadBytes, n);
 			totalLength = totalLength + n;
 			prevReadBytes += n;
-			if ((prevReadBytes >= mSplitFileSize) ||
+			if ((prevReadBytes >= mChunkSize) ||
 					totalLength >= Long.valueOf(contentLength)) {
 				formatted = String.format("%08d", partCounter);
 				path = object_path + "/" + bucket + "/" + objectName + "/" +
@@ -343,12 +344,16 @@ public class Swift
 		try {
 			is = new FileInputStream(Main.configFile);
 			prop.load(is);
-			if (prop.getProperty("chunk_size") != null) {
-				if (!prop.getProperty("chunk_size").equals(""))
-					mSplitFileSize = Integer.valueOf(
-							prop.getProperty("chunk_size"));
-			} else
-				return StatusCode.INVALID_PARAMETERS;
+			if (prop.getProperty("chunk_size") != null &&
+					!prop.getProperty("chunk_size").equals("")) {
+				if (Long.parseLong(
+						prop.getProperty("chunk_size")) > maxChunkSize ||
+						Long.parseLong(prop.getProperty("chunk_size")) < 0) {
+						System.out.println("Chunk size limit is 0-2147483645");
+						return StatusCode.INVALID_PARAMETERS;
+				}
+				mChunkSize = Integer.valueOf(prop.getProperty("chunk_size"));
+			}
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		}
