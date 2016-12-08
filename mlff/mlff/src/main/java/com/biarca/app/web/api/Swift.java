@@ -323,19 +323,14 @@ public class Swift
 	public String calculateMD5CheckSum(byte[] buffer, int save)
 			throws  IOException, NoSuchAlgorithmException
 	{
-		LOGGER.info("IN calculateMD5CheckSum "+ save);
 		MessageDigest digest = DigestUtils.getMd5Digest();
-		LOGGER.info("After Init");
 		digest.update(buffer, 0, save);
-		LOGGER.info("After Update");
 		byte[] mdbytes = digest.digest();
-		LOGGER.info("After Digest");
 
 		StringBuffer checksum = new StringBuffer();
 		for(int i = 0; i < mdbytes.length; i++)
 			checksum.append(Integer.toString((
 					mdbytes[i] & 0xff) + 0x100, 16).substring(1));
-		LOGGER.info("Checksum "+ checksum);
 		return checksum.toString();
 	}
 
