@@ -57,8 +57,10 @@ public class Main {
 
 			configFile = args[0];
 			StatusCode status = readConfigFile(args[0]);
-			if (status != StatusCode.SUCCESS)
+			if (status == StatusCode.OBJECT_NOT_FOUND) {
+				System.out.println("Some of the mandatory fields are missing");
 				return;
+			}
 			URL mURL = new URL(Keystone.s3URL);
 			protocol = mURL.getProtocol();
 			port = mURL.getPort();
@@ -113,7 +115,15 @@ public class Main {
 		Keystone.s3URL = prop.getProperty("s3_url");
 		String password = prop.getProperty("password");
 		try {
-			Keystone.mAdminPassword = Keystone.decryptPassword(password);
+			if ((Keystone.mAdminUserId == null
+				|| (Keystone.mAdminUserId.equals("")))
+				|| (Keystone.mAdminProjectId == null)
+				|| (Keystone.mAdminProjectId.equals("")
+				|| password == null) || password.equals("")) {
+				return StatusCode.OBJECT_NOT_FOUND;
+			}
+			else
+				Keystone.mAdminPassword = Keystone.decryptPassword(password);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

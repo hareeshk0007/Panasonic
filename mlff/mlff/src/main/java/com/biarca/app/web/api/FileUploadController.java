@@ -227,7 +227,7 @@ public class FileUploadController {
 		  try
 		  {
 			  Swift swift = new Swift();
-			  statusCode = swift.getChunkSize();
+			  statusCode = swift.getChunkConfigDetails();
 			  if (statusCode == StatusCode.INVALID_PARAMETERS) {
 				  LOGGER.info("Unable to get chunk size for file "+  fileName
 						  + ", Chunk size limit is 0-2147483645");

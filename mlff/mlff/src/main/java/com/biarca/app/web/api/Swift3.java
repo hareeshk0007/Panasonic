@@ -145,7 +145,7 @@ public class Swift3 {
 		InputStream instream = null;
 
 		try {
-			
+
 			LOGGER.info("In get listBucketObjects "+ bucketName);
 			httpGet = new HttpGet(Keystone.s3URL + "/" + bucketName);
 

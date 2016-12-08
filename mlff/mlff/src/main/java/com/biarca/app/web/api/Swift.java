@@ -29,6 +29,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Properties;
 
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.http.Header;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.ClientProtocolException;
@@ -53,6 +54,7 @@ public class Swift
 	int mChunkSize = 1024 * 1024 * 512; // 512 MB
 	final static int mFileMaxSizeInGB = 5;
 	final static int maxChunkSize = 2147483645;
+	String enableChunkMD5 = "false";
 	int part_counter = 0;
 	String path = "";
 	Socket socket = null;
@@ -143,8 +145,6 @@ public class Swift
 			StringBuilder date) throws Exception
 	{
 		StatusCode statusCode = StatusCode.UNKNOWN;
-		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
-		CloseableHttpResponse httpResponse = null;
 		HttpPut putRequest = null;
 		String url = "";
 		int status = 0;
@@ -157,7 +157,7 @@ public class Swift
 		long totalLength = 0;
 		int n = 0;
 		int prevReadBytes = 0;
-		MessageDigest md = MessageDigest.getInstance("MD5");
+		MessageDigest md = DigestUtils.getMd5Digest();
 		long now = Instant.now().toEpochMilli();
 
 		LOGGER.info("Chunks count " + 
@@ -180,8 +180,6 @@ public class Swift
 					br = new BufferedReader(
 							new InputStreamReader(socket.getInputStream()));
 
-					String checksum = calculateMD5CheckSum(destBuffer,
-							prevReadBytes);
 					LOGGER.info("Chunk : "  + fileName + "/" + now + "/"
 							+ formatted + " is uploading, size : "+
 							prevReadBytes);
@@ -191,7 +189,11 @@ public class Swift
 							.getBytes());
 					dos.write(("X-Auth-Token: " + keystone.mSwiftToken
 							+ "\r\n").getBytes());
-					dos.write(("ETag: " + checksum + "\r\n").getBytes());
+					if (enableChunkMD5.equalsIgnoreCase("true")) {
+						String checksum = calculateMD5CheckSum(destBuffer,
+								prevReadBytes);
+						dos.write(("ETag: " + checksum + "\r\n").getBytes());
+					}
 					dos.write(("\n").getBytes());
 					dos.write(destBuffer, 0, prevReadBytes);
 					dos.flush();
@@ -205,7 +207,7 @@ public class Swift
 							LOGGER.info(fileName + "/" + now + "/" + formatted
 							+ " uploaded");
 							break;
-						}						
+						}
 						else if(line.contains("HTTP/1.1 401")) {
 							LOGGER.info("Invalid credentials : " + 
 									fileName + "/" + now + "/" + formatted);
@@ -242,15 +244,14 @@ public class Swift
 				finally {
 					br.close();
 					dos.close();
-					System.gc();
+					destBuffer = null;
+					destBuffer = new byte[mChunkSize];
 				}
 				partCounter++;
 			}
 			if (statusCode == StatusCode.OBJECT_NOT_FOUND) {
 				instream.close();
-				httpClient.close();
 				socket.close();
-				putRequest = null;
 				return statusCode;
 			}
 		}
@@ -261,6 +262,8 @@ public class Swift
 					mdbytes[j] & 0xff) + 0x100, 16).substring(1));
 		destBuffer = null;
 
+		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+		CloseableHttpResponse httpResponse = null;
 		try {
 			// Sending the Manifest
 			url = keystone.mSwiftURL + "/" + bucket + "/" + objectName;
@@ -269,8 +272,8 @@ public class Swift
 			headers.clear();
 			headers.add(new BasicNameValuePair("X-Auth-Token",
 					keystone.mSwiftToken));
-			headers.add(new BasicNameValuePair("X-Object-Manifest",  bucket +
-					"/" + objectName + "/" + now));
+			headers.add(new BasicNameValuePair("X-Object-Manifest",  bucket
+					+ "/" + objectName + "/" + now));
 			headers.add(new BasicNameValuePair("X-Object-Meta-ETag", 
 					etag.toString()));
 
@@ -318,26 +321,32 @@ public class Swift
 	 * returns : MD5 checksum string
 	 */
 	public String calculateMD5CheckSum(byte[] buffer, int save)
-			throws NoSuchAlgorithmException, IOException
+			throws  IOException, NoSuchAlgorithmException
 	{
-		MessageDigest md = MessageDigest.getInstance("MD5");
-		md.update(buffer, 0, save);
-		byte[] mdbytes = md.digest();
+		LOGGER.info("IN calculateMD5CheckSum "+ save);
+		MessageDigest digest = DigestUtils.getMd5Digest();
+		LOGGER.info("After Init");
+		digest.update(buffer, 0, save);
+		LOGGER.info("After Update");
+		byte[] mdbytes = digest.digest();
+		LOGGER.info("After Digest");
 
 		StringBuffer checksum = new StringBuffer();
 		for(int i = 0; i < mdbytes.length; i++)
 			checksum.append(Integer.toString((
 					mdbytes[i] & 0xff) + 0x100, 16).substring(1));
+		LOGGER.info("Checksum "+ checksum);
 		return checksum.toString();
 	}
 
 	/*
-	 * getChunkSize : Get Chunk size
+	 * getChunkConfigDetails : Method to get the Chunksize and enableChunkMD5
+	 * config values
 	 *
 	 * params : none
 	 * returns : StatusCode
 	 */
-	public StatusCode getChunkSize() throws  IOException
+	public StatusCode getChunkConfigDetails() throws  IOException
 	{
 		Properties prop = new Properties();
 		InputStream is = null;
@@ -353,6 +362,11 @@ public class Swift
 						return StatusCode.INVALID_PARAMETERS;
 				}
 				mChunkSize = Integer.valueOf(prop.getProperty("chunk_size"));
+			}
+			if ((prop.getProperty("enable_chunks_md5")) != null ) {
+				if (!prop.getProperty("enable_chunks_md5").equals("")) {
+					enableChunkMD5 = prop.getProperty("enable_chunks_md5");
+				}
 			}
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();

@@ -246,8 +246,7 @@ public class Keystone
 				httpClient.close();
 			}
 		}
-		catch(Exception ex)
-		{
+		catch(Exception ex) {
 			LOGGER.error(ex.toString());
 		}
 
