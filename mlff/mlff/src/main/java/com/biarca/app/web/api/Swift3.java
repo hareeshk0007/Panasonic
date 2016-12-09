@@ -744,7 +744,7 @@ public class Swift3 {
 
 			httpResponse = httpClient.execute(httpGet);
 			status = httpResponse.getStatusLine().getStatusCode();
-			LOGGER.info("GetObject status : "+ status);
+			LOGGER.info("listOrDownloadObject status : "+ status);
 
 			Header[] headers = httpResponse.getAllHeaders();
 			for (Header header : headers) {

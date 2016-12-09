@@ -109,43 +109,6 @@ public class FileUploadController {
 		  return ResponseEntity
 				  .status(HttpStatus.INTERNAL_SERVER_ERROR)
 				  .body("Error Message");
-  }
-
-	/*
-	 * listBucketObjects : Web Service Method to list the bucket objects
-	 *
-	 * params : bucket
-	 * params : req
-	 * params : response
-	 * 
-	 */
-	@RequestMapping(value = "/{bucket}", method = RequestMethod.GET,
-		  produces = "application/xml")
-	public ResponseEntity<?> listBucketObjects(@PathVariable("bucket")
-		String bucket, HttpServletRequest req, HttpServletResponse response) {
-
-	  LOGGER.info("In listBucketObjects : " + req.getRequestURI());
-
-	  String date = req.getHeader("Date");
-	  String authorization = req.getHeader("Authorization");
-	  String contentType = req.getHeader("Content-type");
-
-	  StringBuilder objectList = new StringBuilder();
-	  StatusCode statusCode = Swift3.listBucketObjects(
-			  date, authorization, contentType, req.getRequestURI(),
-			  response, objectList);
-	  if (statusCode == StatusCode.SUCCESS)
-		  return new ResponseEntity<StringBuilder>(objectList, HttpStatus.OK);
-	  else if (statusCode == StatusCode.PERMISSION_DENIED)
-		  return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
-	  else if (statusCode == StatusCode.OBJECT_NOT_FOUND)
-		  return new ResponseEntity<StringBuilder>(objectList,
-				  HttpStatus.NOT_FOUND);
-	  else if (statusCode == StatusCode.BAD_REQUEST)
-		  return new ResponseEntity<StringBuilder>(objectList,
-				  HttpStatus.BAD_REQUEST);
-	  else
-		  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
 	}
 
 	/*
@@ -341,7 +304,7 @@ public class FileUploadController {
 	}
 
 	/*
-	 * downloadObject : Web Service Method to download the object
+	 * listOrDownloadObject : Web Service Method to list or download the object
 	 *
 	 * params : bucket
 	 * params : req
@@ -349,11 +312,11 @@ public class FileUploadController {
 	 * 
 	 */
 	@RequestMapping(value = "/{bucket}/**", method = {RequestMethod.GET})
-	public ResponseEntity<?> downloadObject(
+	public ResponseEntity<?> listOrDownloadObject(
 			@PathVariable("bucket") String bucket, HttpServletRequest req,
 			HttpServletResponse response) throws Exception {
 
-	  	LOGGER.info("In downloadObject : " + req.getRequestURI());
+		LOGGER.info("In listOrDownloadObject : " + req.getRequestURI());
 
 	  	ResponseEntity<?> respEntity = null;
 	  	StringBuilder statusCode = new StringBuilder();
@@ -363,10 +326,17 @@ public class FileUploadController {
 		String contentType = req.getHeader("Content-type");
 
 		String requestURI = req.getRequestURI();
-
-	  	InputStream inputStream = Swift3.downloadObjectFromSwift(date,
-	  			authorization, contentType, requestURI, statusCode, response);
-	  	if (statusCode.toString().equals("SUCCESS")) {
+		String marker = req.getParameter("marker");
+		InputStream inputStream = null;
+		if (marker == null)
+			inputStream = Swift3.downloadObjectFromSwift(date, authorization,
+				contentType, requestURI, statusCode, response);
+		else {
+			String markerRequest =  requestURI + "?marker=" + marker;
+			inputStream = Swift3.downloadObjectFromSwift(date, authorization,
+				contentType, markerRequest, statusCode, response);
+		}
+		if (statusCode.toString().equals("SUCCESS")) {
 		  	InputStreamResource inputStreamResource = new 
 		  			InputStreamResource(inputStream);
 		  	inputStream = null;

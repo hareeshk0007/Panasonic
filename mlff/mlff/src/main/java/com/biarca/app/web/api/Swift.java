@@ -160,8 +160,13 @@ public class Swift
 		MessageDigest md = DigestUtils.getMd5Digest();
 		long now = Instant.now().toEpochMilli();
 
-		LOGGER.info("Chunks count " + 
-				(((long) Long.valueOf(contentLength) / mChunkSize) + 1));
+		long modulus = Long.valueOf(contentLength) % mChunkSize;
+		if (modulus == 0)
+			LOGGER.info("Chunks count " +
+				(((long) Long.valueOf(contentLength) / mChunkSize)));
+		else
+			LOGGER.info("Chunks count " +
+					(((long) Long.valueOf(contentLength) / mChunkSize) + 1));
 		destBuffer = new byte[mChunkSize];
 		while ((n = instream.read(destBuffer, prevReadBytes,
 				(mChunkSize - prevReadBytes))) != -1)
@@ -245,6 +250,7 @@ public class Swift
 					br.close();
 					dos.close();
 					destBuffer = null;
+					System.gc();
 					destBuffer = new byte[mChunkSize];
 				}
 				partCounter++;
