@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.biarca.app</groupId>
 	<artifactId>mlff</artifactId>
-	<version>0.8</version>
+	<version>0.8.1</version>
 	<packaging>jar</packaging>
 	<name>mlff</name>
 	<description>Demo project for Spring Boot</description>
@@ -13,6 +13,13 @@
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>1.4.0.RELEASE</version>		
 	</parent>
+	<repositories>
+    <repository>
+      <id>jboss-public-repository-group</id>
+        <name>JBoss Public Maven Repository Group</name>
+        <url>http://repo.opennms.org/maven2</url>
+    </repository>
+    </repositories>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -52,6 +59,12 @@
     <groupId>com.google.guava</groupId>
     <artifactId>guava</artifactId>
     <version>19.0</version>
+</dependency>
+<!-- https://mvnrepository.com/artifact/fast-md5/fast-md5 -->
+<dependency>
+    <groupId>fast-md5</groupId>
+    <artifactId>fast-md5</artifactId>
+    <version>2.6.1</version>
 </dependency>
 	</dependencies>
 	<build>

@@ -14,6 +14,7 @@
 
 package com.biarca.app.web.api;
 
+
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.FileInputStream;
@@ -22,14 +23,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.Socket;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.text.ParseException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Properties;
 
-import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.http.Header;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.ClientProtocolException;
@@ -43,6 +41,9 @@ import org.slf4j.LoggerFactory;
 
 import com.biarca.app.Main;
 import com.biarca.app.web.api.Utils.StatusCode;
+import com.google.common.hash.HashCode;
+import com.google.common.hash.Hashing;
+import com.twmacinta.util.MD5;
 
 public class Swift
 {
@@ -157,7 +158,7 @@ public class Swift
 		long totalLength = 0;
 		int n = 0;
 		int prevReadBytes = 0;
-		MessageDigest md = DigestUtils.getMd5Digest();
+		MD5 md5 = new MD5();
 		long now = Instant.now().toEpochMilli();
 
 		long modulus = Long.valueOf(contentLength) % mChunkSize;
@@ -171,7 +172,7 @@ public class Swift
 		while ((n = instream.read(destBuffer, prevReadBytes,
 				(mChunkSize - prevReadBytes))) != -1)
 		{
-			md.update(destBuffer, prevReadBytes, n);
+			md5.Update(destBuffer, prevReadBytes, n);
 			totalLength = totalLength + n;
 			prevReadBytes += n;
 			if ((prevReadBytes >= mChunkSize) ||
@@ -184,88 +185,82 @@ public class Swift
 					dos = new DataOutputStream(socket.getOutputStream());
 					br = new BufferedReader(
 							new InputStreamReader(socket.getInputStream()));
-
 					LOGGER.info("Chunk : "  + fileName + "/" + now + "/"
 							+ formatted + " is uploading, size : "+
 							prevReadBytes);
 
 					dos.write(("PUT " + path + " HTTP/1.0\r\n").getBytes());
-					dos.write(("Content-Length: "+ prevReadBytes + "\r\n")
-							.getBytes());
 					dos.write(("X-Auth-Token: " + keystone.mSwiftToken
 							+ "\r\n").getBytes());
+					dos.write(("Content-Length: "+ prevReadBytes + "\r\n")
+							.getBytes());
 					if (enableChunkMD5.equalsIgnoreCase("true")) {
-						String checksum = calculateMD5CheckSum(destBuffer,
-								prevReadBytes);
-						dos.write(("ETag: " + checksum + "\r\n").getBytes());
+						HashCode hash = Hashing.md5().hashBytes(
+								destBuffer, 0, prevReadBytes);
+						dos.write(("ETag: " + hash + "\r\n").getBytes());
 					}
 					dos.write(("\n").getBytes());
 					dos.write(destBuffer, 0, prevReadBytes);
 					dos.flush();
 
-					prevReadBytes = 0;
 					String line = "";
-
-					while((line = br.readLine()) != null)
-					{
+					while((line = br.readLine()) != null) {
 						if(line.contains("HTTP/1.1 201")) {
-							LOGGER.info(fileName + "/" + now + "/" + formatted
-							+ " uploaded");
+							LOGGER.info(fileName + "/" + now + "/" +
+							formatted + " uploaded");
 							break;
-						}
-						else if(line.contains("HTTP/1.1 401")) {
-							LOGGER.info("Invalid credentials : " + 
-									fileName + "/" + now + "/" + formatted);
-							break;
-						}
-						else if(line.contains("HTTP/1.1 403")) {
-							LOGGER.info("Permission denied : " + 
-									fileName + "/" + now + "/" + formatted);
-							break;
-						}
-						else if(line.contains("HTTP/1.1 404")) {
-							statusCode = StatusCode.OBJECT_NOT_FOUND;
-							LOGGER.info("Bucket not found : "+ 
-									fileName + "/" + now + "/" + formatted);
-							break;
-						}
-						else if(line.contains(
-								"HTTP/1.1 422 Unprocessable Entity")) {
-							LOGGER.info("HTTP/1.1 422 Unprocessable Entity : " + 
-									fileName + "/" + now + "/" + formatted);
-							break;
-						}
-						else {
-							statusCode = StatusCode.UNKNOWN;
-							LOGGER.info("Error Code : " + line + " : " +
-									fileName + "/" + now + "/" + formatted);
+						} else
+							LOGGER.info("Error occured while uploading "+ fileName
+								+ "/" + now + "/" + formatted + " uploaded");
+					}
+					br.close();
+					dos.close();
+				}
+				catch(Exception e) {
+					LOGGER.error("Exception occured " + e.getMessage());
+
+					keystone.getAuthenticationToken();
+					socket = Main.factory.createSocket(Main.host, Main.port);
+					dos = new DataOutputStream(socket.getOutputStream());
+					br = new BufferedReader(
+							new InputStreamReader(socket.getInputStream()));
+					LOGGER.info("Chunk : "  + fileName + "/" + now + "/"
+							+ formatted + " is uploading, size : "+
+							prevReadBytes);
+
+					dos.write(("PUT " + path + " HTTP/1.0\r\n").getBytes());
+					dos.write(("X-Auth-Token: " + keystone.mSwiftToken
+							+ "\r\n").getBytes());
+					dos.write(("Content-Length: "+ prevReadBytes + "\r\n")
+							.getBytes());
+					if (enableChunkMD5.equalsIgnoreCase("true")) {
+						HashCode hash = Hashing.md5().hashBytes(
+								destBuffer, 0, prevReadBytes);
+						dos.write(("ETag: " + hash + "\r\n").getBytes());
+					}
+					dos.write(("\n").getBytes());
+					dos.write(destBuffer, 0, prevReadBytes);
+					dos.flush();
+
+					String line = "";
+					while((line = br.readLine()) != null) {
+						if(line.contains("HTTP/1.1 201")) {
+							LOGGER.info(fileName + "/" + now + "/" +
+							formatted + " uploaded");
 							break;
 						}
 					}
 				}
-				catch(Exception e){
-					LOGGER.error(e.getMessage());
-				}
 				finally {
 					br.close();
 					dos.close();
-					destBuffer = null;
-					System.gc();
-					destBuffer = new byte[mChunkSize];
 				}
 				partCounter++;
-			}
-			if (statusCode == StatusCode.OBJECT_NOT_FOUND) {
-				instream.close();
-				socket.close();
-				return statusCode;
+				prevReadBytes = 0;
 			}
 		}
 
-		byte[] mdbytes = md.digest();
-		for(int j = 0; j < mdbytes.length; j++)
-			etag.append(Integer.toString((
-					mdbytes[j] & 0xff) + 0x100, 16).substring(1));
+		etag.append(md5.asHex());
 		destBuffer = null;
 
 		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
@@ -316,28 +311,6 @@ public class Swift
 		}
 
 		return statusCode;
-	}
-	
-	/*
-	 * calculateMD5CheckSum : Method calculates and returns the MD5 checksum
-	 * of a given buffer.
-	 *
-	 * params : buffer
-	 * params : save
-	 * returns : MD5 checksum string
-	 */
-	public String calculateMD5CheckSum(byte[] buffer, int save)
-			throws  IOException, NoSuchAlgorithmException
-	{
-		MessageDigest digest = DigestUtils.getMd5Digest();
-		digest.update(buffer, 0, save);
-		byte[] mdbytes = digest.digest();
-
-		StringBuffer checksum = new StringBuffer();
-		for(int i = 0; i < mdbytes.length; i++)
-			checksum.append(Integer.toString((
-					mdbytes[i] & 0xff) + 0x100, 16).substring(1));
-		return checksum.toString();
 	}
 
 	/*

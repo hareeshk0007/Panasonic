@@ -316,8 +316,6 @@ public class FileUploadController {
 			@PathVariable("bucket") String bucket, HttpServletRequest req,
 			HttpServletResponse response) throws Exception {
 
-		LOGGER.info("In listOrDownloadObject : " + req.getRequestURI());
-
 	  	ResponseEntity<?> respEntity = null;
 	  	StringBuilder statusCode = new StringBuilder();
 
@@ -328,11 +326,14 @@ public class FileUploadController {
 		String requestURI = req.getRequestURI();
 		String marker = req.getParameter("marker");
 		InputStream inputStream = null;
-		if (marker == null)
+		if (marker == null) {
+			LOGGER.info("In listOrDownloadObject : " + req.getRequestURI());
 			inputStream = Swift3.downloadObjectFromSwift(date, authorization,
 				contentType, requestURI, statusCode, response);
+		}
 		else {
 			String markerRequest =  requestURI + "?marker=" + marker;
+			LOGGER.info("In listOrDownloadObject : " + markerRequest);
 			inputStream = Swift3.downloadObjectFromSwift(date, authorization,
 				contentType, markerRequest, statusCode, response);
 		}
