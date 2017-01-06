@@ -447,7 +447,7 @@ public class Swift3 {
 			dos.write(postData.getBytes());
 			dos.flush();
 
-			String line = "";					
+			String line = "";
 			while((line = br.readLine()) != null)
 			{
 				String[] key_value = line.split(" ");
@@ -483,6 +483,11 @@ public class Swift3 {
 				{
 					LOGGER.info("Bucket not found");
 					statusCode = StatusCode.CONTENT_MISMATCH;
+				}
+				else if(line.contains("HTTP/1.0 500"))
+				{
+					LOGGER.info("Internal server error");
+					statusCode = StatusCode.FAILED;
 				}
 			}
 		}

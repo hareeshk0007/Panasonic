@@ -211,7 +211,7 @@ public class Swift
 							break;
 						} else
 							LOGGER.info("Error occured while uploading "+ fileName
-								+ "/" + now + "/" + formatted + " uploaded");
+								+ "/" + now + "/" + formatted);
 					}
 					br.close();
 					dos.close();
@@ -266,38 +266,50 @@ public class Swift
 		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 		CloseableHttpResponse httpResponse = null;
 		try {
-			// Sending the Manifest
-			url = keystone.mSwiftURL + "/" + bucket + "/" + objectName;
-			LOGGER.info("Manifest file sending : "+ url);
-			putRequest = new HttpPut(url);
-			headers.clear();
-			headers.add(new BasicNameValuePair("X-Auth-Token",
-					keystone.mSwiftToken));
-			headers.add(new BasicNameValuePair("X-Object-Manifest",  bucket
-					+ "/" + objectName + "/" + now));
-			headers.add(new BasicNameValuePair("X-Object-Meta-ETag", 
-					etag.toString()));
+			while (true) {
+				// Sending the Manifest
+				url = keystone.mSwiftURL + "/" + bucket + "/" + objectName;
+				LOGGER.info("Manifest file sending : "+ url);
+				putRequest = new HttpPut(url);
+				headers.clear();
+				headers.add(new BasicNameValuePair("X-Auth-Token",
+						keystone.mSwiftToken));
+				headers.add(new BasicNameValuePair("X-Object-Manifest",  bucket
+						+ "/" + objectName + "/" + now));
+				headers.add(new BasicNameValuePair("X-Object-Meta-ETag",
+						etag.toString()));
 
-			for(NameValuePair h : headers)
-				putRequest.addHeader(h.getName(), h.getValue());
-	
-			httpResponse = httpClient.execute(putRequest);
-			status = httpResponse.getStatusLine().getStatusCode();
-			LOGGER.info(bucket + "/" + fileName + " Manifest file "
-					+ "status : "+ status);
-			if (status == 201)
-				statusCode = StatusCode.SUCCESS;
-			else if (status == 404)
-				statusCode = StatusCode.OBJECT_NOT_FOUND;
+				for(NameValuePair h : headers)
+					putRequest.addHeader(h.getName(), h.getValue());
 
-			Header[] headers = httpResponse.getAllHeaders();
-			for (Header header : headers) {			
-				if (header.getName().equals("Last-Modified"))
-					lastModified.append(header.getValue());
-				else if (header.getName().equals("X-Trans-Id"))
-					transId.append(header.getValue());
-				else if (header.getName().equals("Date"))
-					date.append(header.getValue());
+				httpResponse = httpClient.execute(putRequest);
+				status = httpResponse.getStatusLine().getStatusCode();
+				LOGGER.info(bucket + "/" + fileName + " Manifest file "
+						+ "status : "+ status);
+				Header[] headers = httpResponse.getAllHeaders();
+				for (Header header : headers) {
+					if (header.getName().equals("Last-Modified"))
+						lastModified.append(header.getValue());
+					else if (header.getName().equals("X-Trans-Id"))
+						transId.append(header.getValue());
+					else if (header.getName().equals("Date"))
+						date.append(header.getValue());
+				}
+				if (status == 201) {
+					statusCode = StatusCode.SUCCESS;
+					break;
+				}
+				else if (status == 404) {
+					statusCode = StatusCode.OBJECT_NOT_FOUND;
+					break;
+				}
+				else if (status == 401) {
+					lastModified.setLength(0);
+					transId.setLength(0);
+					date.setLength(0);
+					keystone.getAuthenticationToken();
+				} else
+					break;
 			}
 		} catch(Exception e) {
 			LOGGER.error(e.getMessage());
