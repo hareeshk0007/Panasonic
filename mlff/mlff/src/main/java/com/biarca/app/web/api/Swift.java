@@ -160,6 +160,7 @@ public class Swift
 		int prevReadBytes = 0;
 		MD5 md5 = new MD5();
 		long now = Instant.now().toEpochMilli();
+		int retryCount = 0;
 
 		long modulus = Long.valueOf(contentLength) % mChunkSize;
 		if (modulus == 0)
@@ -266,7 +267,7 @@ public class Swift
 		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 		CloseableHttpResponse httpResponse = null;
 		try {
-			while (true) {
+			while (retryCount < 3) {
 				// Sending the Manifest
 				url = keystone.mSwiftURL + "/" + bucket + "/" + objectName;
 				LOGGER.info("Manifest file sending : "+ url);
@@ -297,6 +298,7 @@ public class Swift
 				}
 				if (status == 201) {
 					statusCode = StatusCode.SUCCESS;
+					LOGGER.debug("Retrying sending manifest file");
 					break;
 				}
 				else if (status == 404) {
@@ -308,8 +310,23 @@ public class Swift
 					transId.setLength(0);
 					date.setLength(0);
 					keystone.getAuthenticationToken();
-				} else
+				} else if (status == 500) {
+					lastModified.setLength(0);
+					transId.setLength(0);
+					date.setLength(0);
+					LOGGER.info("Retrying sending manifest file");
+					statusCode = StatusCode.INTERNAL_SERVER_ERROR;
+				} else if (status == 503) {
+					lastModified.setLength(0);
+					transId.setLength(0);
+					date.setLength(0);
+					LOGGER.info("Retrying sending manifest file");
+					statusCode = StatusCode.SERVICE_UNAVAILABLE;
+				} else {
+					statusCode = StatusCode.FAILED;
 					break;
+				}
+				retryCount++;
 			}
 		} catch(Exception e) {
 			LOGGER.error(e.getMessage());
