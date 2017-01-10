@@ -161,6 +161,8 @@ public class Swift
 		MD5 md5 = new MD5();
 		long now = Instant.now().toEpochMilli();
 		int retryCount = 0;
+		int maxRetries = 0;
+		boolean uploaded = false;
 
 		long modulus = Long.valueOf(contentLength) % mChunkSize;
 		if (modulus == 0)
@@ -173,6 +175,8 @@ public class Swift
 		while ((n = instream.read(destBuffer, prevReadBytes,
 				(mChunkSize - prevReadBytes))) != -1)
 		{
+			uploaded = false;
+			maxRetries = 0;
 			md5.Update(destBuffer, prevReadBytes, n);
 			totalLength = totalLength + n;
 			prevReadBytes += n;
@@ -182,43 +186,61 @@ public class Swift
 				path = object_path + "/" + bucket + "/" + objectName + "/" +
 						now + "/" + formatted;
 				try {
-					socket = Main.factory.createSocket(Main.host, Main.port);
-					dos = new DataOutputStream(socket.getOutputStream());
-					br = new BufferedReader(
-							new InputStreamReader(socket.getInputStream()));
-					LOGGER.info("Chunk : "  + fileName + "/" + now + "/"
-							+ formatted + " is uploading, size : "+
-							prevReadBytes);
+					while (maxRetries < 3) {
+						socket = Main.factory.createSocket(Main.host, Main.port);
+						dos = new DataOutputStream(socket.getOutputStream());
+						br = new BufferedReader(
+								new InputStreamReader(socket.getInputStream()));
+						LOGGER.info("Chunk : "  + fileName + "/" + now + "/"
+								+ formatted + " is uploading, size : "+
+								prevReadBytes);
 
-					dos.write(("PUT " + path + " HTTP/1.0\r\n").getBytes());
-					dos.write(("X-Auth-Token: " + keystone.mSwiftToken
-							+ "\r\n").getBytes());
-					dos.write(("Content-Length: "+ prevReadBytes + "\r\n")
-							.getBytes());
-					if (enableChunkMD5.equalsIgnoreCase("true")) {
-						HashCode hash = Hashing.md5().hashBytes(
-								destBuffer, 0, prevReadBytes);
-						dos.write(("ETag: " + hash + "\r\n").getBytes());
-					}
-					dos.write(("\n").getBytes());
-					dos.write(destBuffer, 0, prevReadBytes);
-					dos.flush();
+						dos.write(("PUT " + path + " HTTP/1.0\r\n").getBytes());
+						dos.write(("X-Auth-Token: " + keystone.mSwiftToken
+								+ "\r\n").getBytes());
+						dos.write(("Content-Length: "+ prevReadBytes + "\r\n")
+								.getBytes());
+						if (enableChunkMD5.equalsIgnoreCase("true")) {
+							HashCode hash = Hashing.md5().hashBytes(
+									destBuffer, 0, prevReadBytes);
+							dos.write(("ETag: " + hash + "\r\n").getBytes());
+						}
+						dos.write(("\n").getBytes());
+						dos.write(destBuffer, 0, prevReadBytes);
+						dos.flush();
 
-					String line = "";
-					while((line = br.readLine()) != null) {
-						if(line.contains("HTTP/1.1 201")) {
-							LOGGER.info(fileName + "/" + now + "/" +
-							formatted + " uploaded");
+						String line = "";
+						while((line = br.readLine()) != null) {
+							if(line.contains("HTTP/1.1 201")) {
+								uploaded = true;
+								LOGGER.info(fileName + "/" + now + "/" +
+								formatted + " uploaded");
+								break;
+							}
+							else if(line.contains("HTTP/1.1 401")) {
+								LOGGER.info("Invalid credentials for "+
+									fileName + "/" + now + "/" + formatted);
+								keystone.getAuthenticationToken();
+								break;
+							} else if(line.contains("HTTP/1.1 503")) {
+								LOGGER.info("Service unavailable "+
+									fileName + "/" + now + "/" + formatted);
+								break;
+							} else {
+								LOGGER.info("Error in uploading "+
+									fileName + "/" + now + "/" + formatted);
+								break;
+							}
+						}
+						br.close();
+						dos.close();
+						maxRetries++;
+						if (uploaded)
 							break;
-						} else
-							LOGGER.info("Error occured while uploading "+ fileName
-								+ "/" + now + "/" + formatted);
 					}
-					br.close();
-					dos.close();
 				}
 				catch(Exception e) {
-					LOGGER.error("Exception occured " + e.getMessage());
+					LOGGER.info("Exception occured " + e.getMessage());
 
 					keystone.getAuthenticationToken();
 					socket = Main.factory.createSocket(Main.host, Main.port);
@@ -248,6 +270,14 @@ public class Swift
 						if(line.contains("HTTP/1.1 201")) {
 							LOGGER.info(fileName + "/" + now + "/" +
 							formatted + " uploaded");
+							break;
+						} else if(line.contains("HTTP/1.1 503")) {
+							LOGGER.info("Service unavailable "+
+								fileName + "/" + now + "/" + formatted);
+							break;
+						} else {
+							LOGGER.info("Error in uploading "+
+								fileName + "/" + now + "/" + formatted);
 							break;
 						}
 					}
