@@ -734,81 +734,107 @@ public class Swift3 {
 		String etag = "";
 		String metaEtag = "";
 		InputStream instream = null;
-		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
-		CloseableHttpResponse httpResponse = null;
+		int retryCount = 0;
+		boolean isSuccess = false;
 
-		try
+		while ((isSuccess== false) && retryCount <= 2)
 		{
-			HttpGet httpGet = new HttpGet(Keystone.s3URL + objectName);
-
-			httpGet.setHeader("Date", date);
-			httpGet.setHeader("Authorization", signature);
-			if (contentType != null)
-				httpGet.setHeader("Content-type", 
-						"application/x-www-form-urlencoded; charset=utf-8");
-
-			httpResponse = httpClient.execute(httpGet);
-			status = httpResponse.getStatusLine().getStatusCode();
-			LOGGER.info("listOrDownloadObject status : "+ status);
-
-			Header[] headers = httpResponse.getAllHeaders();
-			for (Header header : headers) {
-				if (header.getName().equals("ETag")) {
-					etag = header.getValue();
-					continue;
-				}
-				if (header.getName().equals("x-amz-meta-etag")) {
-					isMetaETagFound = true;
-					metaEtag = header.getValue();
-				}					
-				if (!header.getName().equals("Transfer-Encoding"))
-					servletResponse.setHeader(header.getName(), header.getValue());
-			}
-			if (isMetaETagFound)
-				servletResponse.setHeader("ETag", metaEtag);
-			else
-				servletResponse.setHeader("ETag", etag);
-
-			HttpEntity httpEntity = httpResponse.getEntity();
-			if(status == 200)
+			CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+			try
 			{
-				if(httpEntity != null)
+				HttpGet httpGet = new HttpGet(Keystone.s3URL + objectName);
+
+				httpGet.setHeader("Date", date);
+				httpGet.setHeader("Authorization", signature);
+				if (contentType != null)
+					httpGet.setHeader("Content-type",
+							"application/x-www-form-urlencoded; charset=utf-8");
+
+				CloseableHttpResponse httpResponse = httpClient.execute(httpGet);
+				status = httpResponse.getStatusLine().getStatusCode();
+				LOGGER.info("listOrDownloadObject status : "+ status);
+
+				Header[] headers = httpResponse.getAllHeaders();
+				for (Header header : headers) {
+					if (header.getName().equals("ETag")) {
+						etag = header.getValue();
+						continue;
+					}
+					if (header.getName().equals("x-amz-meta-etag")) {
+						isMetaETagFound = true;
+						metaEtag = header.getValue();
+					}
+					if (!header.getName().equals("Transfer-Encoding"))
+						servletResponse.setHeader(header.getName(), 
+								header.getValue());
+				}
+				if (isMetaETagFound)
+					servletResponse.setHeader("ETag", metaEtag);
+				else
+					servletResponse.setHeader("ETag", etag);
+
+				HttpEntity httpEntity = httpResponse.getEntity();
+				if(status == 200)
 				{
-					instream = httpEntity.getContent();
 					statusCode.append("SUCCESS");
+					instream = null;
+					if(httpEntity != null)
+					{
+						instream = httpEntity.getContent();
+						isSuccess = true;
+					}
 				}
-			}
-			else if(status == 400)
-			{
-				statusCode.append("BAD_REQUEST");
-				instream = httpEntity.getContent();
-			}
-			else if(status == 401)
-			{
-				statusCode.append("INVALID_CREDENTIALS");
-				instream = null;
-			}
-			else if(status == 403)
-			{
-				statusCode.append("PERMISSION_DENIED");
-				instream = null;
-			}
-			else if(status == 404)
-			{
-				statusCode.append("NOT_FOUND");
-				if(httpEntity != null)
+				else if(status == 400)
 				{
+					statusCode.append("BAD_REQUEST");
 					instream = httpEntity.getContent();
+					isSuccess = true;
+				}
+				else if(status == 401)
+				{
+					statusCode.append("INVALID_CREDENTIALS");
+					instream = null;
+					isSuccess = true;
+				}
+				else if(status == 403)
+				{
+					statusCode.append("PERMISSION_DENIED");
+					instream = null;
+					isSuccess = true;
+				}
+				else if(status == 404)
+				{
+					statusCode.append("NOT_FOUND");
+					if(httpEntity != null)
+					{
+						instream = httpEntity.getContent();
+					}
+					isSuccess = true;
+				}
+				else if(status == 500 || status == 503)
+				{
+					statusCode.setLength(0);
+					statusCode.append("SERVICE_UNAVAILABLE");
+					LOGGER.info("Retrying download for object : "+ objectName);
+					retryCount++;
+					LOGGER.info("Retry count : "+ retryCount);
+				}
+				else
+				{
+					statusCode.append("UNKNOWN");
+					LOGGER.info("Retrying download for object : "+ objectName);
+					retryCount++;
+					LOGGER.info("Retry count : "+ retryCount);
+					isSuccess = true;
 				}
 			}
-		}
-		catch(Exception e)
-		{
-		}
-		finally
-		{
-			httpClient = null;
-			httpResponse = null;
+			catch(Exception e)
+			{
+			}
+			finally
+			{
+				httpClient = null;
+			}
 		}
 		return instream;
 	}

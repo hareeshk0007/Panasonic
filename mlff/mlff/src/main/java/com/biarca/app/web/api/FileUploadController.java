@@ -344,6 +344,12 @@ public class FileUploadController {
 		  	return new ResponseEntity<Object>(inputStreamResource, null,
 		  			HttpStatus.OK);
 	  	}
+		else if (statusCode.toString().equals("SERVICE_UNAVAILABLE"))
+			respEntity = new ResponseEntity<Object>(null, null,
+					HttpStatus.SERVICE_UNAVAILABLE);
+		else if (statusCode.toString().equals("UNKNOWN"))
+			respEntity = new ResponseEntity<Object>(null, null,
+					HttpStatus.INTERNAL_SERVER_ERROR);
 	  	else if (statusCode.toString().equals("INVALID_CREDENTIALS"))
 	  	  	respEntity = new ResponseEntity<Object>(null, null,
 	  	  			HttpStatus.FORBIDDEN);
