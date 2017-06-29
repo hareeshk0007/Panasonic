@@ -225,6 +225,8 @@ public class Swift
 							} else if(line.contains("HTTP/1.1 503")) {
 								LOGGER.info("Service unavailable "+
 									fileName + "/" + now + "/" + formatted);
+								LOGGER.info("Sleeping for "+ Main.retryInterval);
+								Thread.sleep(Main.retryInterval);
 								break;
 							} else {
 								LOGGER.info("Error in uploading "+
@@ -274,6 +276,8 @@ public class Swift
 						} else if(line.contains("HTTP/1.1 503")) {
 							LOGGER.info("Service unavailable "+
 								fileName + "/" + now + "/" + formatted);
+							LOGGER.info("Sleeping for "+ Main.retryInterval);
+							Thread.sleep(Main.retryInterval);
 							break;
 						} else {
 							LOGGER.info("Error in uploading "+
@@ -346,12 +350,16 @@ public class Swift
 					date.setLength(0);
 					LOGGER.info("Retrying sending manifest file");
 					statusCode = StatusCode.INTERNAL_SERVER_ERROR;
+					LOGGER.info("Sleeping for "+ Main.retryInterval);
+					Thread.sleep(Main.retryInterval);
 				} else if (status == 503) {
 					lastModified.setLength(0);
 					transId.setLength(0);
 					date.setLength(0);
 					LOGGER.info("Retrying sending manifest file");
 					statusCode = StatusCode.SERVICE_UNAVAILABLE;
+					LOGGER.info("Sleeping for "+ Main.retryInterval);
+					Thread.sleep(Main.retryInterval);
 				} else {
 					statusCode = StatusCode.FAILED;
 					break;

@@ -815,6 +815,8 @@ public class Swift3 {
 				{
 					statusCode.setLength(0);
 					statusCode.append("SERVICE_UNAVAILABLE");
+					LOGGER.info("Sleeping for "+ Main.retryInterval);
+					Thread.sleep(Main.retryInterval);
 					LOGGER.info("Retrying download for object : "+ objectName);
 					retryCount++;
 					LOGGER.info("Retry count : "+ retryCount);

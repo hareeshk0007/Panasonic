@@ -43,6 +43,7 @@ public class Main {
 	public static String configFile = "";
 	public static SocketFactory factory = null;
 	public static SSLSocketFactory sslFactory = null;
+	public static int retryInterval = 2000;
 
 	public static int port = 0;
 	public static String protocol = "";
@@ -106,6 +107,8 @@ public class Main {
 		InputStream is = new FileInputStream(confFileName);
 
 		prop.load(is);
+		retryInterval = Integer.parseInt(
+				prop.getProperty("retry_interval"));
 		Keystone.mAuthURL = prop.getProperty("auth_url");
 		Keystone.mAdminUserName = prop.getProperty("username");
 		Keystone.mAdminUserId = prop.getProperty("userid");
