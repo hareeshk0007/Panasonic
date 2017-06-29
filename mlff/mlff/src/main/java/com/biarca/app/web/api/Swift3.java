@@ -739,6 +739,7 @@ public class Swift3 {
 
 		while ((isSuccess== false) && retryCount <= 2)
 		{
+			statusCode.setLength(0);
 			CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 			try
 			{
@@ -813,7 +814,6 @@ public class Swift3 {
 				}
 				else if(status == 500 || status == 503)
 				{
-					statusCode.setLength(0);
 					statusCode.append("SERVICE_UNAVAILABLE");
 					LOGGER.info("Sleeping for "+ Main.retryInterval);
 					Thread.sleep(Main.retryInterval);
