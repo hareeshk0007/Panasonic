@@ -384,7 +384,6 @@ public class Swift
 						date.append(header.getValue());
 				}
 				if (status == 201) {
-					LOGGER.debug("Retrying sending manifest file");
 					break;
 				}
 				else if (status == 404) {
