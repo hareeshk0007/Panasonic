@@ -22,6 +22,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.ConnectException;
 import java.net.Socket;
 import java.text.ParseException;
 import java.time.Instant;
@@ -38,6 +39,7 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.message.BasicNameValuePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 
 import com.biarca.app.Main;
 import com.biarca.app.web.api.Utils.StatusCode;
@@ -86,14 +88,14 @@ public class Swift
 	 * returns : StatusCode
 	 * 
 	 */
-	public StatusCode prepareUploadFile(Keystone keystone, String bucket,
+	public HttpStatus prepareUploadFile(Keystone keystone, String bucket,
 			String fileName, String contentLength, InputStream instream,
 			StringBuilder etag, StringBuilder lastModified,
 			StringBuilder transId, StringBuilder swiftDate)
 					throws ClientProtocolException,
 	IllegalStateException, IOException, ParseException
 	{
-		StatusCode status = StatusCode.UNKNOWN;
+		HttpStatus status = null;
 		try {
 			int index = 0;
 			String url = keystone.mSwiftURL;
@@ -140,12 +142,11 @@ public class Swift
 	 * returns : StatusCode
 	 *
 	 */
-	public StatusCode uploadFile(Keystone keystone, String bucket,
+	public HttpStatus uploadFile(Keystone keystone, String bucket,
 			String objectName, String contentLength, InputStream instream,
 			StringBuilder etag,StringBuilder lastModified, StringBuilder transId,
 			StringBuilder date) throws Exception
 	{
-		StatusCode statusCode = StatusCode.UNKNOWN;
 		HttpPut putRequest = null;
 		String url = "";
 		int status = 0;
@@ -192,6 +193,82 @@ public class Swift
 						br = new BufferedReader(
 								new InputStreamReader(socket.getInputStream()));
 						LOGGER.info("Chunk : "  + fileName + "/" + now + "/"
+							+ formatted + " is uploading, size : " +
+							prevReadBytes);
+
+						dos.write(("PUT " + path + " HTTP/1.0\r\n").getBytes());
+						dos.write(("X-Auth-Token: " + keystone.mSwiftToken
+								+ "\r\n").getBytes());
+						dos.write(("Content-Length: "+ prevReadBytes + "\r\n")
+								.getBytes());
+						if (enableChunkMD5.equalsIgnoreCase("true")) {
+							HashCode hash = Hashing.md5().hashBytes(
+									destBuffer, 0, prevReadBytes);
+							dos.write(("ETag: " + hash + "\r\n").getBytes());
+						}
+						dos.write(("\n").getBytes());
+						dos.write(destBuffer, 0, prevReadBytes);
+						dos.flush();
+
+						String line = "";
+						while((line = br.readLine()) != null) {
+							if (line.contains("HTTP/1.1")) {
+								status = Integer.parseInt(line.substring(9, 12));
+								if(line.contains("HTTP/1.1 201")) {
+									uploaded = true;
+									LOGGER.info(fileName + "/" + now + "/" +
+									formatted + " uploaded");
+									break;
+								}
+								else if(line.contains("HTTP/1.1 401")) {
+									LOGGER.info("Invalid credentials for "+
+										fileName + "/" + now + "/" + formatted);
+									keystone.getAuthenticationToken();
+									break;
+								} else if(line.contains("HTTP/1.1 500")) {
+									LOGGER.info("Internal Error "+
+									fileName + "/" + now + "/" + formatted);
+									LOGGER.info("Sleeping for "+ Main.retryInterval);
+									Thread.sleep(Main.retryInterval);
+									LOGGER.info(fileName + "/" + now + "/"
+										+ formatted + " retry count : "+ maxRetries);
+									break;
+								} else if(line.contains("HTTP/1.1 503")) {
+									LOGGER.info("Service unavailable "+
+										fileName + "/" + now + "/" + formatted);
+									LOGGER.info("Sleeping for "+ Main.retryInterval);
+									LOGGER.info(fileName + "/" + now + "/"
+										+ formatted + " retry count : "+ maxRetries);
+									Thread.sleep(Main.retryInterval);
+									break;
+								} else {
+									LOGGER.info("Error in uploading "+
+										fileName + "/" + now + "/" + formatted);
+									LOGGER.info("Error code : " + line);
+									break;
+								}
+							}
+						}
+						br.close();
+						dos.close();
+						maxRetries++;
+						if (uploaded)
+							break;
+					}
+				}
+				catch(Exception e) {
+					try {
+						LOGGER.info("Exception occured in uploading: "
+								+ e.toString() + " " + fileName + "/" +
+								now + "/" + formatted);
+
+						keystone.getAuthenticationToken();
+						socket = Main.factory.createSocket(Main.host,
+								Main.port);
+						dos = new DataOutputStream(socket.getOutputStream());
+						br = new BufferedReader(
+								new InputStreamReader(socket.getInputStream()));
+						LOGGER.info("Chunk : "  + fileName + "/" + now + "/"
 								+ formatted + " is uploading, size : "+
 								prevReadBytes);
 
@@ -211,87 +288,63 @@ public class Swift
 
 						String line = "";
 						while((line = br.readLine()) != null) {
-							if(line.contains("HTTP/1.1 201")) {
-								uploaded = true;
-								LOGGER.info(fileName + "/" + now + "/" +
-								formatted + " uploaded");
-								break;
-							}
-							else if(line.contains("HTTP/1.1 401")) {
-								LOGGER.info("Invalid credentials for "+
-									fileName + "/" + now + "/" + formatted);
-								keystone.getAuthenticationToken();
-								break;
-							} else if(line.contains("HTTP/1.1 503")) {
-								LOGGER.info("Service unavailable "+
-									fileName + "/" + now + "/" + formatted);
-								LOGGER.info("Sleeping for "+ Main.retryInterval);
-								Thread.sleep(Main.retryInterval);
-								break;
-							} else {
-								LOGGER.info("Error in uploading "+
-									fileName + "/" + now + "/" + formatted);
-								break;
+							if (line.contains("HTTP/1.1")) {
+								status = Integer.parseInt(line.substring(9, 12));
+								if(line.contains("HTTP/1.1 201")) {
+									LOGGER.info(fileName + "/" + now + "/" +
+									formatted + " uploaded");
+									uploaded = true;
+									break;
+								} else if(line.contains("HTTP/1.1 500")) {
+									LOGGER.info("Internal Error in the inner "
+										+ "exception block " + fileName + "/" +
+										now + "/" + formatted);
+									LOGGER.info("Sleeping for "+ Main.retryInterval);
+									LOGGER.info(fileName + "/" + now + "/"
+										+ formatted + " retry count : "+ maxRetries);
+									Thread.sleep(Main.retryInterval);
+									break;
+								} else if(line.contains("HTTP/1.1 503")) {
+									LOGGER.info("Service unavailable in the inner "
+										+ "exception block " + fileName + "/" +
+										now + "/" + formatted);
+									LOGGER.info("Sleeping for "+ Main.retryInterval);
+									LOGGER.info(fileName + "/" + now + "/"
+										+ formatted + " retry count : "+ maxRetries);
+									Thread.sleep(Main.retryInterval);
+									break;
+								} else {
+									LOGGER.info("Error in uploading in the inner "
+										+ "exception block " + fileName + "/" +
+										now + "/" + formatted);
+									break;
+								}
 							}
 						}
-						br.close();
-						dos.close();
-						maxRetries++;
-						if (uploaded)
-							break;
 					}
-				}
-				catch(Exception e) {
-					LOGGER.info("Exception occured " + e.getMessage());
-
-					keystone.getAuthenticationToken();
-					socket = Main.factory.createSocket(Main.host, Main.port);
-					dos = new DataOutputStream(socket.getOutputStream());
-					br = new BufferedReader(
-							new InputStreamReader(socket.getInputStream()));
-					LOGGER.info("Chunk : "  + fileName + "/" + now + "/"
-							+ formatted + " is uploading, size : "+
-							prevReadBytes);
-
-					dos.write(("PUT " + path + " HTTP/1.0\r\n").getBytes());
-					dos.write(("X-Auth-Token: " + keystone.mSwiftToken
-							+ "\r\n").getBytes());
-					dos.write(("Content-Length: "+ prevReadBytes + "\r\n")
-							.getBytes());
-					if (enableChunkMD5.equalsIgnoreCase("true")) {
-						HashCode hash = Hashing.md5().hashBytes(
-								destBuffer, 0, prevReadBytes);
-						dos.write(("ETag: " + hash + "\r\n").getBytes());
+					catch(ConnectException ex) {
+						LOGGER.info("Connection Exception occured in the inner "
+							+ "exception block for  uploading: " + e.getMessage()
+							+ " " + fileName + "/" + now + "/" + formatted);
+						status = HttpStatus.SERVICE_UNAVAILABLE.value();
 					}
-					dos.write(("\n").getBytes());
-					dos.write(destBuffer, 0, prevReadBytes);
-					dos.flush();
-
-					String line = "";
-					while((line = br.readLine()) != null) {
-						if(line.contains("HTTP/1.1 201")) {
-							LOGGER.info(fileName + "/" + now + "/" +
-							formatted + " uploaded");
-							break;
-						} else if(line.contains("HTTP/1.1 503")) {
-							LOGGER.info("Service unavailable "+
-								fileName + "/" + now + "/" + formatted);
-							LOGGER.info("Sleeping for "+ Main.retryInterval);
-							Thread.sleep(Main.retryInterval);
-							break;
-						} else {
-							LOGGER.info("Error in uploading "+
-								fileName + "/" + now + "/" + formatted);
-							break;
-						}
+					catch(Exception ex) {
+						LOGGER.info("Exception occured in the inner exception block"
+							+ " for  uploading: " + e.getMessage()
+							+ " " + fileName + "/" + now + "/" + formatted);
 					}
 				}
 				finally {
-					br.close();
-					dos.close();
+					if (br != null)
+						br.close();
+					if (dos != null)
+						dos.close();
 				}
 				partCounter++;
 				prevReadBytes = 0;
+
+				if (uploaded == false)
+					return HttpStatus.valueOf(status);
 			}
 		}
 
@@ -331,12 +384,10 @@ public class Swift
 						date.append(header.getValue());
 				}
 				if (status == 201) {
-					statusCode = StatusCode.SUCCESS;
 					LOGGER.debug("Retrying sending manifest file");
 					break;
 				}
 				else if (status == 404) {
-					statusCode = StatusCode.OBJECT_NOT_FOUND;
 					break;
 				}
 				else if (status == 401) {
@@ -344,24 +395,24 @@ public class Swift
 					transId.setLength(0);
 					date.setLength(0);
 					keystone.getAuthenticationToken();
+				}
+				else if (status == 403) {
+					break;
 				} else if (status == 500) {
 					lastModified.setLength(0);
 					transId.setLength(0);
 					date.setLength(0);
-					LOGGER.info("Retrying sending manifest file");
-					statusCode = StatusCode.INTERNAL_SERVER_ERROR;
+					LOGGER.info(fileName + " retry count : "+ maxRetries);
 					LOGGER.info("Sleeping for "+ Main.retryInterval);
 					Thread.sleep(Main.retryInterval);
 				} else if (status == 503) {
 					lastModified.setLength(0);
 					transId.setLength(0);
 					date.setLength(0);
-					LOGGER.info("Retrying sending manifest file");
-					statusCode = StatusCode.SERVICE_UNAVAILABLE;
+					LOGGER.info(fileName + " retry count : "+ maxRetries);
 					LOGGER.info("Sleeping for "+ Main.retryInterval);
 					Thread.sleep(Main.retryInterval);
 				} else {
-					statusCode = StatusCode.FAILED;
 					break;
 				}
 				retryCount++;
@@ -377,7 +428,7 @@ public class Swift
 			putRequest = null;
 		}
 
-		return statusCode;
+		return HttpStatus.valueOf(status);
 	}
 
 	/*

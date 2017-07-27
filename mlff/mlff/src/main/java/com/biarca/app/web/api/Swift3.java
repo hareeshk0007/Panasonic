@@ -19,10 +19,15 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.ConnectException;
 import java.net.Socket;
+import java.net.SocketException;
+
 import javax.net.ssl.SSLSocket;
 import javax.servlet.http.HttpServletResponse;
+
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.mutable.MutableInt;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -34,8 +39,9 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+
 import com.biarca.app.Main;
-import com.biarca.app.web.api.Utils.StatusCode;
 
 public class Swift3 {
 
@@ -55,11 +61,10 @@ public class Swift3 {
 	 * returns : StatusCode
 	 * 
 	 */
-	public static StatusCode listBuckets(String date, String signature,
-			String contentType, StringBuilder bucketList, 
-			HttpServletResponse servletResponse) {
+	public static HttpStatus listBuckets(String date, String signature,
+			String contentType, StringBuilder bucketList,
+			HttpServletResponse servletResponse) throws IOException {
 
-		StatusCode statusCode = StatusCode.UNKNOWN;
 		String strResponse = "";
 		int responseCode = 0;
 		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
@@ -88,128 +93,40 @@ public class Swift3 {
 					HttpEntity httpEntity = httpResponse.getEntity();
 					if(httpEntity != null)
 					{
-						statusCode = StatusCode.SUCCESS;
 						InputStream instream = httpEntity.getContent();
 						strResponse = convertStreamToString(instream);
 						bucketList.append(strResponse);
 						instream.close();
 					}
 				}
-				else if (responseCode == 403) {
-					statusCode = StatusCode.PERMISSION_DENIED;
-				}
+			}
+			catch (ConnectException e) {
+				responseCode = HttpStatus.SERVICE_UNAVAILABLE.value();
+				e.printStackTrace();
+				LOGGER.warn(e.getMessage());
 			}
 			catch (Exception e) {
 				e.printStackTrace();
+				LOGGER.warn(e.getMessage());
 			}
 			finally
 			{
-				try {
+				if (httpResponse != null)
 					httpResponse.close();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
 			}
+		}
+		catch(Exception e)
+		{
+			LOGGER.warn(e.getMessage());
 		}
 		finally
 		{
-			try {
-				httpClient.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
+			httpClient.close();
 		}
-		return statusCode;
+
+		return HttpStatus.valueOf(responseCode);
 	}
-	
-	/*
-	 * listBucketObjects : Method to list all the objects for the given bucket
-	 * params : date
-	 * params : signature
-	 * params : contentType
-	 * params : bucketName
-	 * params : objectList
-	 * params : servletResponse
-	 * returns : StatusCode
-	 * 
-	 */
-	public static StatusCode listBucketObjects(String date, String signature,
-			String contentType, String bucketName, 
-			HttpServletResponse servletResponse, StringBuilder objectList)
-	{
-		String strResponse = "";
-		StatusCode statusCode = StatusCode.UNKNOWN;
-		HttpGet httpGet = null;
-		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
-		CloseableHttpResponse httpResponse = null;
-		InputStream instream = null;
 
-		try {
-
-			LOGGER.info("In get listBucketObjects "+ bucketName);
-			httpGet = new HttpGet(Keystone.s3URL + "/" + bucketName);
-
-			httpGet.setHeader("Date", date);
-			httpGet.setHeader("Authorization", signature);
-			if (contentType != null)
-				httpGet.setHeader("Content-type", 
-						"application/x-www-form-urlencoded; charset=utf-8");
-
-				try {
-					httpResponse = httpClient.execute(httpGet);
-					int status = httpResponse.getStatusLine().getStatusCode();
-					LOGGER.info("In ListBucketObjects status : "+ status);
-					HttpEntity httpEntity = httpResponse.getEntity();
-					if(httpEntity != null)
-					{
-						statusCode = StatusCode.SUCCESS;
-						instream = httpEntity.getContent();
-						strResponse = convertStreamToString(instream);
-						objectList.append(strResponse);
-					}
-					
-					Header[] headers = httpResponse.getAllHeaders();
-					for (Header header : headers) {		
-						if ((!header.getName().equals("Content-Length")))
-								servletResponse.setHeader(header.getName(), 
-										header.getValue());
-					}
-					if (status == 200) {
-						statusCode = StatusCode.SUCCESS;
-					}
-					else if (status == 403) {
-						statusCode = StatusCode.PERMISSION_DENIED;
-					}
-					else if (status == 404) {
-						statusCode = StatusCode.OBJECT_NOT_FOUND;
-					}
-					else if (status == 400) {				
-						statusCode = StatusCode.BAD_REQUEST;
-					}
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-			finally
-			{
-				try {
-					httpResponse.close();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			}
-		}
-		finally
-		{
-			try {
-				httpClient.close();
-				instream.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-		return statusCode;
-	}
-	
 	/*
 	 * createBucket : Method to create the bucket
 	 * params : date
@@ -221,12 +138,10 @@ public class Swift3 {
 	 * returns : StatusCode
 	 * 
 	 */
-	public static StatusCode createBucket(String date, String signature,
+	public static HttpStatus createBucket(String date, String signature,
 			String contentType, String bucketName, StringBuilder result,
-			HttpServletResponse servletResponse) {
-		
-		StatusCode statusCode = StatusCode.UNKNOWN;
-		int status;
+			HttpServletResponse servletResponse) throws IOException {
+		int status = 0;
 		HttpPut httpPut = null;
 		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 		CloseableHttpResponse httpResponse = null;
@@ -270,40 +185,30 @@ public class Swift3 {
 				result.append(convertStreamToString(in));
 				if (in != null)
 					in.close();
-	
-				if (status == 200) {
-					statusCode = StatusCode.SUCCESS;
-				} else if (status == 400) {
-					statusCode = StatusCode.BAD_REQUEST;
-				} else if (status == 409) {
-					statusCode = StatusCode.ALREADY_EXISTS;
-				} else if (status == 403) {	
-					statusCode = StatusCode.PERMISSION_DENIED;
-				} else 	{
-					statusCode = StatusCode.FAILED;
-				}
+			} catch (ConnectException e) {
+				status = HttpStatus.SERVICE_UNAVAILABLE.value();
+				e.printStackTrace();
+				LOGGER.warn(e.getMessage());
 			} catch (Exception e) {
 				e.printStackTrace();
+				LOGGER.warn(e.getMessage());
 			}
 			finally
 			{
-				try {
+				if (httpResponse != null)
 					httpResponse.close();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
 			}
+		}
+		catch(Exception e)
+		{
+			LOGGER.warn(e.getMessage());
 		}
 		finally
 		{
-			try {
-				httpClient.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
+			httpClient.close();
 		}
-		
-		return statusCode;
+
+		return HttpStatus.valueOf(status);
 	}
 
 	/*
@@ -316,13 +221,12 @@ public class Swift3 {
 	 * returns : StatusCode
 	 * 
 	 */
-	public static StatusCode deleteBucket(String date, String signature,
+	public static HttpStatus deleteBucket(String date, String signature,
 			String bucketname, StringBuilder result,
-			HttpServletResponse servletResponse)
+			HttpServletResponse servletResponse) throws IOException
 	{
 		String strResponse = "";
-		StatusCode statusCode = StatusCode.UNKNOWN;
-		int status;
+		int status = 0;
 		HttpDelete httpDelete = null;
 		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 		CloseableHttpResponse httpResponse = null;
@@ -341,11 +245,10 @@ public class Swift3 {
 				HttpEntity httpEntity = httpResponse.getEntity();
 				if(httpEntity != null)
 				{
-					statusCode = StatusCode.SUCCESS;
 					InputStream instream = httpEntity.getContent();
 					strResponse = convertStreamToString(instream);
 					result.append(strResponse);
-					instream.close();			
+					instream.close();
 				}
 
 				Header[] headers = httpResponse.getAllHeaders();
@@ -354,37 +257,30 @@ public class Swift3 {
 							servletResponse.setHeader(header.getName(), 
 									header.getValue());
 				}
-
-				if (status == 204) {
-					statusCode = StatusCode.SUCCESS;
-				} else if (status == 409) {
-					statusCode = StatusCode.ALREADY_EXISTS;
-				} else if (status == 403) {
-					statusCode = StatusCode.PERMISSION_DENIED;
-				} else if (status == 404) {
-					statusCode = StatusCode.OBJECT_NOT_FOUND;
-				}
+			} catch (ConnectException e) {
+				status = HttpStatus.SERVICE_UNAVAILABLE.value();
+				e.printStackTrace();
+				LOGGER.warn(e.getMessage());
 			} catch (Exception e) {
 				e.printStackTrace();
+				LOGGER.warn(e.getMessage());
 			}
 			finally
 			{
-				try {
+				if (httpResponse != null)
 					httpResponse.close();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
 			}
+		}
+		catch(Exception e)
+		{
+			LOGGER.warn(e.getMessage());
 		}
 		finally
 		{
-			try {
-				httpClient.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
+			httpClient.close();
 		}
-		return statusCode;
+
+		return HttpStatus.valueOf(status);
 	}
 	
 	/*
@@ -402,15 +298,15 @@ public class Swift3 {
 	 * returns : StatusCode
 	 * 
 	 */
-	public StatusCode uploadObject(String date, String signature, String bucketName,
+	public HttpStatus uploadObject(String date, String signature, String bucketName,
 			String objectName, String contentLength, String contentType,
 			String content_MD5, InputStream instream,
 			HttpServletResponse response) throws Exception
 	{
 		String path = "";
+		int status = 0;
 		DataOutputStream dos = null;
 		BufferedReader br = null;
-		StatusCode statusCode = StatusCode.UNKNOWN;
 
 		try
 		{
@@ -458,49 +354,34 @@ public class Swift3 {
 							key_value[0].length() -1);
 					response.setHeader(key, value);
 				}
-				if(line.contains("HTTP/1.1 200"))
-				{
-					LOGGER.info(objectName+ " uploaded to bucket ");
-					statusCode = StatusCode.SUCCESS;
-				}
-				else if(line.contains("HTTP/1.1 401"))
-				{
-					LOGGER.info("Authentication failed for uploading :" +
-							objectName);
-					statusCode = StatusCode.INVALID_CREDENTIALS;
-				}
-				else if(line.contains("HTTP/1.1 404"))
-				{
-					LOGGER.info("Bucket not found ");
-					statusCode = StatusCode.OBJECT_NOT_FOUND;
-				}
-				else if(line.contains("HTTP/1.1 411"))
-				{
-					LOGGER.info("Length Required");
-					statusCode = StatusCode.INVALID_PARAMETERS;
-				}
-				else if(line.contains("HTTP/1.1 422 Unprocessable Entity"))
-				{
-					LOGGER.info("Bucket not found");
-					statusCode = StatusCode.CONTENT_MISMATCH;
-				}
-				else if(line.contains("HTTP/1.0 500"))
-				{
-					LOGGER.info("Internal server error");
-					statusCode = StatusCode.FAILED;
+				if (line.contains("HTTP/1.1")) {
+					status = Integer.parseInt(line.substring(9, 12));
+					if(line.contains("HTTP/1.1 200")) {
+						LOGGER.info(objectName+ " uploaded to bucket ");
+					} else
+						LOGGER.info("Unable to upload object " + objectName +
+							" : Status " + status);
 				}
 			}
+		} catch (SocketException e) {
+			e.printStackTrace();
+			LOGGER.warn(e.getMessage());
+			status = HttpStatus.SERVICE_UNAVAILABLE.value();
 		}
 		catch(Exception e)
 		{
+			LOGGER.warn(e.getMessage());
 		}
 		finally
 		{
 			instream.close();
-			dos.close();
-			br.close();
+			if (dos != null)
+				dos.close();
+			if (br != null)
+				br.close();
 		}
-		return statusCode;
+
+		return HttpStatus.valueOf(status);
 	}
 
 	/*
@@ -514,11 +395,11 @@ public class Swift3 {
 	 * returns : StatusCode
 	 * 
 	 */
-	public static StatusCode deleteObject(String date, String signature,
+	public static HttpStatus deleteObject(String date, String signature,
 			String contentType, String objectName, StringBuilder result,
-			HttpServletResponse servletResponse)
+			HttpServletResponse servletResponse) throws IOException
 	{
-		StatusCode statusCode = StatusCode.UNKNOWN;
+		int status = 0;
 		String strResponse = "";
 		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 		CloseableHttpResponse httpResponse = null;
@@ -537,13 +418,12 @@ public class Swift3 {
 						"application/x-www-form-urlencoded; charset=utf-8");
 			try {
 				httpResponse = httpClient.execute(httpDelete);
-				int status = httpResponse.getStatusLine().getStatusCode();
+				status = httpResponse.getStatusLine().getStatusCode();
 				LOGGER.info("In DeleteObject status : "+ status);
 				
 				HttpEntity httpEntity = httpResponse.getEntity();
 				if(httpEntity != null)
 				{
-					statusCode = StatusCode.SUCCESS;
 					InputStream instream = httpEntity.getContent();
 					strResponse = convertStreamToString(instream);
 					result.append(strResponse);
@@ -555,42 +435,30 @@ public class Swift3 {
 						servletResponse.setHeader(header.getName(), 
 								header.getValue());
 				}
-				if (status == 204) {
-					statusCode = StatusCode.SUCCESS;
-				}
-				else if (status == 400) {
-					statusCode = StatusCode.OBJECT_NOT_FOUND;
-				}
-				else if (status == 403) {
-					statusCode = StatusCode.PERMISSION_DENIED;
-				}
-				else if (status == 404) {
-					statusCode = StatusCode.OBJECT_NOT_FOUND;
-				}
+			} catch (ConnectException e) {
+				status = HttpStatus.SERVICE_UNAVAILABLE.value();
+				e.printStackTrace();
+				LOGGER.warn(e.getMessage());
 			} catch (Exception e) {
 				e.printStackTrace();
+				LOGGER.warn(e.getMessage());
 			}
 			finally
 			{
-				try {
+				if (httpResponse != null)
 					httpResponse.close();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
 			}
 		}
 		catch(Exception e)
 		{
+			LOGGER.warn(e.getMessage());
 		}
 		finally
 		{
-			try {
-				httpClient.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
+			httpClient.close();
 		}
-		return statusCode;
+
+		return HttpStatus.valueOf(status);
 	}
 	
 	/*
@@ -603,14 +471,13 @@ public class Swift3 {
 	 * returns : StatusCode
 	 * 
 	 */
-	public static StatusCode headObject(String date, String signature, 
+	public static HttpStatus headObject(String date, String signature,
 			String contentType, String objectName, 
-			HttpServletResponse servletResponse)
+			HttpServletResponse servletResponse) throws IOException
 	{
-
-		StatusCode statusCode = StatusCode.UNKNOWN;
 		CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 		CloseableHttpResponse httpResponse = null;
+		int status = 0;
 
 		try
 		{
@@ -624,7 +491,7 @@ public class Swift3 {
 						"application/x-www-form-urlencoded; charset=utf-8");
 			try {
 				httpResponse = httpClient.execute(httpHead);
-				int status = httpResponse.getStatusLine().getStatusCode();
+				status = httpResponse.getStatusLine().getStatusCode();
 				LOGGER.info("In HeadObject status : "+ status);
 				
 				Header[] headers = httpResponse.getAllHeaders();
@@ -632,52 +499,31 @@ public class Swift3 {
 					servletResponse.setHeader(header.getName(),
 							header.getValue());
 				}
-	
-				if (status == 200) {
-					statusCode = StatusCode.SUCCESS;
-					return statusCode;	
-				}
-				else if (status == 400) {
-					statusCode = StatusCode.INVALID_PARAMETERS;
-					return statusCode;
-				}
-				else if (status == 401) {
-					statusCode = StatusCode.PERMISSION_DENIED;
-					return statusCode;
-				}
-				else if (status == 403) {
-					statusCode = StatusCode.PERMISSION_DENIED;
-					return statusCode;
-				}
-				else if (status == 404) {
-					statusCode = StatusCode.OBJECT_NOT_FOUND;
-					return statusCode;
-				}
 			
+			} catch (ConnectException e) {
+				status = HttpStatus.SERVICE_UNAVAILABLE.value();
+				e.printStackTrace();
+				LOGGER.warn(e.getMessage());
 			} catch (Exception e) {
 				e.printStackTrace();
+				LOGGER.warn(e.getMessage());
 			}
 			finally
 			{
-				try {
+				if (httpResponse != null)
 					httpResponse.close();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
 			}
 		}
 		catch(Exception e)
 		{
+			LOGGER.warn(e.getMessage());
 		}
 		finally
 		{
-			try {
-				httpClient.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
+			httpClient.close();
 		}
-		return statusCode;
+
+		return HttpStatus.valueOf(status);
 	}
 	
 	/*
@@ -711,7 +557,8 @@ public class Swift3 {
 			{
 				e.printStackTrace();
 			}
-		}		
+		}
+
 		return sb.toString();
 		
 	}
@@ -726,7 +573,7 @@ public class Swift3 {
 	 * returns : servletResponse
 	 */
 	public static InputStream downloadObjectFromSwift(String date, String signature,
-			String contentType, String objectName, StringBuilder statusCode,
+			String contentType, String objectName, MutableInt statusCode,
 			HttpServletResponse servletResponse) throws Exception
 	{
 		int status = 0;
@@ -739,7 +586,6 @@ public class Swift3 {
 
 		while ((isSuccess== false) && retryCount <= 2)
 		{
-			statusCode.setLength(0);
 			CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 			try
 			{
@@ -754,6 +600,8 @@ public class Swift3 {
 				CloseableHttpResponse httpResponse = httpClient.execute(httpGet);
 				status = httpResponse.getStatusLine().getStatusCode();
 				LOGGER.info("listOrDownloadObject status : "+ status);
+
+				statusCode.setValue(status);
 
 				Header[] headers = httpResponse.getAllHeaders();
 				for (Header header : headers) {
@@ -777,7 +625,6 @@ public class Swift3 {
 				HttpEntity httpEntity = httpResponse.getEntity();
 				if(status == 200)
 				{
-					statusCode.append("SUCCESS");
 					instream = null;
 					if(httpEntity != null)
 					{
@@ -785,36 +632,8 @@ public class Swift3 {
 						isSuccess = true;
 					}
 				}
-				else if(status == 400)
-				{
-					statusCode.append("BAD_REQUEST");
-					instream = httpEntity.getContent();
-					isSuccess = true;
-				}
-				else if(status == 401)
-				{
-					statusCode.append("INVALID_CREDENTIALS");
-					instream = null;
-					isSuccess = true;
-				}
-				else if(status == 403)
-				{
-					statusCode.append("PERMISSION_DENIED");
-					instream = null;
-					isSuccess = true;
-				}
-				else if(status == 404)
-				{
-					statusCode.append("NOT_FOUND");
-					if(httpEntity != null)
-					{
-						instream = httpEntity.getContent();
-					}
-					isSuccess = true;
-				}
 				else if(status == 500 || status == 503)
 				{
-					statusCode.append("SERVICE_UNAVAILABLE");
 					LOGGER.info("Sleeping for "+ Main.retryInterval);
 					Thread.sleep(Main.retryInterval);
 					LOGGER.info("Retrying download for object : "+ objectName);
@@ -823,21 +642,24 @@ public class Swift3 {
 				}
 				else
 				{
-					statusCode.append("UNKNOWN");
-					LOGGER.info("Retrying download for object : "+ objectName);
-					retryCount++;
-					LOGGER.info("Retry count : "+ retryCount);
+					LOGGER.info("Unable to download object " +
+						objectName + " : " + status);
 					isSuccess = true;
 				}
 			}
 			catch(Exception e)
 			{
+				LOGGER.warn(e.getMessage());
+				status = HttpStatus.SERVICE_UNAVAILABLE.value();
+				statusCode.setValue(status);
+				break;
 			}
 			finally
 			{
 				httpClient = null;
 			}
 		}
+
 		return instream;
 	}
 }

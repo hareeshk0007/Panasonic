@@ -17,10 +17,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import javax.servlet.ServletException;
+
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import org.apache.http.client.ClientProtocolException;
+
+import org.apache.commons.lang3.mutable.MutableInt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.InputStreamResource;
@@ -33,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.HandlerMapping;
+
 import com.biarca.app.web.api.Utils.StatusCode;
 
 @RestController
@@ -47,7 +49,7 @@ public class FileUploadController {
 	@RequestMapping(value = "/", method = RequestMethod.GET,
 			  produces = MediaType.APPLICATION_XML_VALUE)
 	  public ResponseEntity<?> listAllBuckets(HttpServletRequest req,
-			  HttpServletResponse response) {
+			  HttpServletResponse response) throws IOException {
 
 		LOGGER.info("In listAllBuckets : ");
 
@@ -57,15 +59,12 @@ public class FileUploadController {
 
 		StringBuilder bucketList = new StringBuilder();
 		  
-		StatusCode statusCode = Swift3.listBuckets(date, authorization,
+		HttpStatus statusCode = Swift3.listBuckets(date, authorization,
 				contentType, bucketList, response);
-		if (statusCode == StatusCode.SUCCESS)
+		if (statusCode == HttpStatus.OK)
 			return new ResponseEntity<StringBuilder>(bucketList, HttpStatus.OK);
-		else if (statusCode == StatusCode.PERMISSION_DENIED) {
-			return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
-		}
 		else
-			return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
+			return new ResponseEntity<String>(statusCode);
   }
 
 	/*
@@ -78,7 +77,7 @@ public class FileUploadController {
 	 */
 	@RequestMapping(value = "/{bucket}", method = RequestMethod.PUT)
 	public ResponseEntity<?> createBucket(@PathVariable("bucket") String bucket,
-		  HttpServletRequest req, HttpServletResponse response) {
+		  HttpServletRequest req, HttpServletResponse response) throws IOException {
 
 	  LOGGER.info("In createBucket : " + req.getRequestURI());
 
@@ -90,25 +89,12 @@ public class FileUploadController {
 	  if(!contentLength.equals("0")) {		  
 		  return new ResponseEntity<String>(HttpStatus.BAD_REQUEST);
 	  }
-	  StatusCode statusCode = Swift3.createBucket(date, authorization, 
+	  HttpStatus statusCode = Swift3.createBucket(date, authorization,
 			  contentType, req.getRequestURI(), result, response);
-	  if (statusCode == StatusCode.SUCCESS) {
+	  if (statusCode == HttpStatus.OK) {
 		  return new ResponseEntity<String>(HttpStatus.OK);
-	  }
-	  else if (statusCode == StatusCode.ALREADY_EXISTS) {
-		  return ResponseEntity
-				  .status(HttpStatus.CONFLICT)
-				  .body(result.toString());
-	  }
-	  else if (statusCode == StatusCode.PERMISSION_DENIED)
-		  return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
-	  else if (statusCode == StatusCode.BAD_REQUEST)
-		  return new ResponseEntity<StringBuilder>(result, null,
-				  HttpStatus.BAD_REQUEST);
-	  else
-		  return ResponseEntity
-				  .status(HttpStatus.INTERNAL_SERVER_ERROR)
-				  .body("Error Message");
+	  } else
+		  return ResponseEntity.status(statusCode).body(result);
 	}
 
 	/*
@@ -121,7 +107,7 @@ public class FileUploadController {
 	 */
 	@RequestMapping(value = "/{bucket}", method = RequestMethod.DELETE)
 	public ResponseEntity<?> deleteBucket(@PathVariable("bucket") String bucket,
-		  HttpServletRequest req, HttpServletResponse response) {
+		  HttpServletRequest req, HttpServletResponse response) throws IOException {
 
 	  LOGGER.info("In deleteBucket :" + req.getRequestURI());
 
@@ -130,20 +116,12 @@ public class FileUploadController {
 
 	  StringBuilder result = new StringBuilder();
 
-	  StatusCode statusCode = Swift3.deleteBucket(date, authorization,
+	  HttpStatus statusCode = Swift3.deleteBucket(date, authorization,
 			  req.getRequestURI(), result, response);
-	  if (statusCode == StatusCode.SUCCESS)
+	  if (statusCode == HttpStatus.NO_CONTENT)
 		  return new ResponseEntity<String>(HttpStatus.NO_CONTENT);
-	  else if (statusCode == StatusCode.OBJECT_NOT_FOUND)
-		  return new ResponseEntity<StringBuilder>(result,
-				  HttpStatus.NOT_FOUND);
-	  else if (statusCode == StatusCode.PERMISSION_DENIED)
-		  return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
-	  else if (statusCode == StatusCode.ALREADY_EXISTS)
-		  return new ResponseEntity<StringBuilder>(result, 
-				  HttpStatus.CONFLICT);
 	  else
-		  return new ResponseEntity<String>(HttpStatus.BAD_REQUEST);
+		  return new ResponseEntity<StringBuilder>(result, statusCode);
 	}
 
 	/*
@@ -156,11 +134,10 @@ public class FileUploadController {
 	 */
 	@RequestMapping(value = "/{bucket}/**", method = RequestMethod.PUT)
 	public ResponseEntity<?> uploadObject(@PathVariable("bucket") String bucket,
-			HttpServletRequest req, HttpServletResponse response) throws
-			ClientProtocolException, IllegalStateException, IOException,
-			ServletException {
+			HttpServletRequest req, HttpServletResponse response) throws Exception {
 
 	  StatusCode statusCode = null;
+	  HttpStatus httpStatus = null;
 	  String requestURI = req.getRequestURI();
 	  String pattern = (String) req.getAttribute(
 			  HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
@@ -169,7 +146,7 @@ public class FileUploadController {
 			  req.getServletPath());
 	  String contentLength = req.getHeader("Content-length");
 	  if (contentLength == null || contentLength.equals("")) {
-		  LOGGER.info("In uploadObject, Unable to get Content Length for "+ 
+		  LOGGER.info("In uploadObject, Unable to get Content Length for "+
 				  fileName);
 		  return new ResponseEntity<String>(HttpStatus.BAD_REQUEST);
 	  }
@@ -197,15 +174,9 @@ public class FileUploadController {
 				  return new ResponseEntity<String>(HttpStatus.BAD_REQUEST);
 			  }
 
-			  statusCode = keystone.getAdminAuthenticationToken();
-			  if (statusCode != StatusCode.SUCCESS) {
-				  if (statusCode == StatusCode.INVALID_CREDENTIALS)
-					  return new ResponseEntity<String>(HttpStatus.UNAUTHORIZED);
-				  else if (statusCode == StatusCode.OBJECT_NOT_FOUND)
-					  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
-				  else
-					  return new ResponseEntity<String>(
-							  HttpStatus.INTERNAL_SERVER_ERROR);
+			  httpStatus = keystone.getAdminAuthenticationToken();
+			  if (httpStatus != HttpStatus.CREATED) {
+					  return new ResponseEntity<String>(httpStatus);
 			  }
 			  String ec2_tmp[] = authorization.split(":");
 			  String ec2[] = ec2_tmp[0].split(" ");
@@ -229,9 +200,7 @@ public class FileUploadController {
 					  return new ResponseEntity<String>(
 							  HttpStatus.INTERNAL_SERVER_ERROR);
 			  }
-			  if (statusCode != StatusCode.SUCCESS)
-				  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
-			  statusCode = swift.prepareUploadFile(keystone, bucket,
+			  httpStatus = swift.prepareUploadFile(keystone, bucket,
 					  fileName, contentLength, req.getInputStream(),
 					  etag, lastModified, transId, swiftDate);
 			  response.addHeader("Content-type", "text/html; charset=UTF-16");
@@ -240,24 +209,13 @@ public class FileUploadController {
 			  response.addHeader("Last-Modified", lastModified.toString());
 			  response.addHeader("x-amz-request-id", transId.toString());
 			  response.addHeader("X-Trans-Id", transId.toString());
-			  if (statusCode == StatusCode.SUCCESS) {
+			  if (httpStatus == HttpStatus.CREATED) {
 				  response.setContentLength(0);
 				  response.addHeader("ETag", "\""+ etag.toString() + "\"");
 				  return new ResponseEntity<String>(HttpStatus.OK);
 			  }
-			  else if (statusCode == StatusCode.PERMISSION_DENIED)
-				  return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
-			  else if (statusCode == StatusCode.OBJECT_NOT_FOUND)
-				  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
-			  else if (statusCode == StatusCode.INVALID_PARAMETERS)
-				  return new ResponseEntity<StringBuilder>(
-					  HttpStatus.BAD_REQUEST);
-			  else if (statusCode == StatusCode.CONTENT_MISMATCH)
-				  return new ResponseEntity<String>(
-						  HttpStatus.PRECONDITION_FAILED);
 			  else
-				  return new ResponseEntity<String>(
-						  HttpStatus.INTERNAL_SERVER_ERROR);
+				  return new ResponseEntity<String>(httpStatus);
 		  }
 		  catch (Exception e)
 		  {
@@ -270,36 +228,21 @@ public class FileUploadController {
 	  {
 		  String date = req.getHeader("Date");
 		  String content_MD5 = req.getHeader("Content-MD5");
-		  try
-		  {
-			  StringBuilder objectName =
-					  	new StringBuilder(requestURI).deleteCharAt(0);
-			  LOGGER.info("In uploadObject => "+ objectName + " : Size : "+
-					  contentLength);
-			  Swift3 swift3 = new Swift3();
-			  statusCode = swift3.uploadObject(date, authorization, bucket,
-					  objectName.toString(), contentLength, contentType,
-					  content_MD5, req.getInputStream(), response);
-		  }
-		  catch (Exception e)
-		  {
-			LOGGER.error(e.toString());
-		  }
-		  if (statusCode == StatusCode.SUCCESS) {
+		  StringBuilder objectName =
+				  new StringBuilder(requestURI).deleteCharAt(0);
+		  LOGGER.info("In uploadObject => "+ objectName + " : Size : "+
+				  contentLength);
+		  Swift3 swift3 = new Swift3();
+		  httpStatus = swift3.uploadObject(date, authorization, bucket,
+				  objectName.toString(), contentLength, contentType,
+				  content_MD5, req.getInputStream(), response);
+
+		  if (httpStatus == HttpStatus.OK) {
 			  response.setContentType("text/html; charset=UTF-16");
 			  return new ResponseEntity<String>(HttpStatus.OK);
 		  }
-		  else if (statusCode == StatusCode.PERMISSION_DENIED)
-			  return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
-		  else if (statusCode == StatusCode.OBJECT_NOT_FOUND)
-			  return new ResponseEntity<String>("Bucket Not Found", 
-					  HttpStatus.NOT_FOUND);
-		  else if (statusCode == StatusCode.INVALID_PARAMETERS)
-			  return new ResponseEntity<String>(HttpStatus.BAD_REQUEST);
-		  else if (statusCode == StatusCode.CONTENT_MISMATCH)
-			  return new ResponseEntity<String>(HttpStatus.PRECONDITION_FAILED);
 		  else
-			  return new ResponseEntity<String>(HttpStatus.BAD_REQUEST);
+			  return new ResponseEntity<String>(httpStatus);
 	  }
 	}
 
@@ -316,9 +259,8 @@ public class FileUploadController {
 			@PathVariable("bucket") String bucket, HttpServletRequest req,
 			HttpServletResponse response) throws Exception {
 
-	  	ResponseEntity<?> respEntity = null;
-	  	StringBuilder statusCode = new StringBuilder();
-
+		ResponseEntity<?> respEntity = null;
+		MutableInt statusCode = new MutableInt();
 		String date = req.getHeader("Date");
 		String authorization = req.getHeader("Authorization");
 		String contentType = req.getHeader("Content-type");
@@ -337,38 +279,15 @@ public class FileUploadController {
 			inputStream = Swift3.downloadObjectFromSwift(date, authorization,
 				contentType, markerRequest, statusCode, response);
 		}
-		if (statusCode.toString().equals("SUCCESS")) {
+		HttpStatus httpStatus = HttpStatus.valueOf(statusCode.intValue());
+		if (httpStatus == HttpStatus.OK) {
 		  	InputStreamResource inputStreamResource = new 
 		  			InputStreamResource(inputStream);
 		  	inputStream = null;
 		  	return new ResponseEntity<Object>(inputStreamResource, null,
 		  			HttpStatus.OK);
-	  	}
-		else if (statusCode.toString().equals("SERVICE_UNAVAILABLE"))
-			respEntity = new ResponseEntity<Object>(null, null,
-					HttpStatus.SERVICE_UNAVAILABLE);
-		else if (statusCode.toString().equals("UNKNOWN"))
-			respEntity = new ResponseEntity<Object>(null, null,
-					HttpStatus.INTERNAL_SERVER_ERROR);
-	  	else if (statusCode.toString().equals("INVALID_CREDENTIALS"))
-	  	  	respEntity = new ResponseEntity<Object>(null, null,
-	  	  			HttpStatus.FORBIDDEN);
-	  	else if (statusCode.toString().equals("PERMISSION_DENIED"))
-	  	  	respEntity = new ResponseEntity<Object>(null, null, 
-	  	  			HttpStatus.FORBIDDEN);
-	  	else if (statusCode.toString().equals("NOT_FOUND")) {
-	  		InputStreamResource inputStreamResource = new
-	  				InputStreamResource(inputStream);
-	  		inputStream = null;
-	  	  	respEntity = new ResponseEntity<Object>(inputStreamResource, null,
-	  	  			HttpStatus.NOT_FOUND);
-	  	}
-	  	else if (statusCode.toString().equals("BAD_REQUEST")) {
-	  		InputStreamResource inputStreamResource = new 
-	  				InputStreamResource(inputStream);
-	  	  	respEntity = new ResponseEntity<Object>(inputStreamResource, null, 
-	  	  			HttpStatus.BAD_REQUEST);
-	  	}
+		} else
+			respEntity = new ResponseEntity<Object>(null, null, httpStatus);
 
 	  	if (inputStream != null) {
 	  		inputStream.close();
@@ -388,7 +307,7 @@ public class FileUploadController {
 	 */
 	@RequestMapping(value = "/{bucket}/**", method = RequestMethod.HEAD)
 	public ResponseEntity<?> headObject(@PathVariable("bucket") String bucket,
-		  HttpServletRequest req, HttpServletResponse response) {
+		  HttpServletRequest req, HttpServletResponse response) throws IOException {
 
 		  LOGGER.info("In headObject : " + req.getRequestURI());
 
@@ -399,16 +318,9 @@ public class FileUploadController {
 		  String requestURI = req.getRequestURI();
 		  StringBuilder sb = new StringBuilder(requestURI).deleteCharAt(0);
 
-		  StatusCode statusCode = Swift3.headObject(
+		  HttpStatus status = Swift3.headObject(
 				  date, authorization, contentType, sb.toString(), response);
-		  if (statusCode == StatusCode.SUCCESS)
-			  return new ResponseEntity<String>(HttpStatus.OK);
-		  else if (statusCode == StatusCode.PERMISSION_DENIED)
-			  return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
-		  else if (statusCode == StatusCode.OBJECT_NOT_FOUND)
-			  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
-		  else
-			  return new ResponseEntity<String>(HttpStatus.NOT_FOUND);
+			  return new ResponseEntity<String>(status);
   }
 
 	/*
@@ -421,7 +333,7 @@ public class FileUploadController {
 	 */
 	@RequestMapping(value = "/{bucket}/**", method = RequestMethod.DELETE)
 	public ResponseEntity<?> deleteObject(@PathVariable("bucket") String bucket,
-		  HttpServletRequest req, HttpServletResponse response) {
+		  HttpServletRequest req, HttpServletResponse response) throws IOException {
 
 		  LOGGER.info("In deleteObject : " + req.getRequestURI());
 
@@ -429,20 +341,14 @@ public class FileUploadController {
 		  String authorization = req.getHeader("Authorization");
 		  String contentType = req.getHeader("Content-type");
 
-		  StringBuilder objectList = new StringBuilder();
+		  StringBuilder result = new StringBuilder();
 		  String requestURI = req.getRequestURI();
 
-		  StatusCode statusCode = Swift3.deleteObject(date, authorization,
-				  contentType, requestURI, objectList, response);
-		  if (statusCode == StatusCode.SUCCESS)
+		  HttpStatus status = Swift3.deleteObject(date, authorization,
+				  contentType, requestURI, result, response);
+		  if (status == HttpStatus.NO_CONTENT)
 			  return new ResponseEntity<String>(HttpStatus.NO_CONTENT);
-		  else if (statusCode == StatusCode.PERMISSION_DENIED)
-			  return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
-		  else if (statusCode == StatusCode.OBJECT_NOT_FOUND)
-			  return new ResponseEntity<StringBuilder>(objectList, 
-					  HttpStatus.NOT_FOUND);
 		  else
-			  return new ResponseEntity<StringBuilder>(objectList, 
-					  HttpStatus.NOT_FOUND);
+			  return new ResponseEntity<StringBuilder>(result, status);
 	}
 }

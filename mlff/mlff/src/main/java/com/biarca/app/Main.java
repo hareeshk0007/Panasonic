@@ -27,6 +27,7 @@ import javax.net.ssl.SSLSocketFactory;
 import org.apache.http.client.ClientProtocolException;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import com.biarca.app.web.api.Keystone;
 import com.biarca.app.web.api.Utils.StatusCode;
@@ -39,6 +40,7 @@ import com.biarca.app.web.api.Utils.StatusCode;
  * 
  */
 @SpringBootApplication
+@ConfigurationProperties
 public class Main {
 	public static String configFile = "";
 	public static SocketFactory factory = null;
@@ -84,7 +86,30 @@ public class Main {
 
 		SpringApplication.run(Main.class, args);
 	}
-	
+
+	/* TODO. The below block needs to be uncommented for creating an custom
+		Jetty Server Object.
+	*/
+	/*@Bean
+	public JettyEmbeddedServletContainerFactory jettyEmbeddedServletContainerFactory(
+			@Value("${server.port:9999}") final String port,
+			@Value("${jetty.threadPool.maxThreads:200}") final String maxThreads,
+			@Value("${jetty.threadPool.minThreads:8}") final String minThreads,
+			@Value("${jetty.threadPool.idleTimeout:60000}") final String idleTimeout) {
+		final JettyEmbeddedServletContainerFactory factory =
+				new JettyEmbeddedServletContainerFactory(Integer.valueOf(port));
+		factory.addServerCustomizers(new JettyServerCustomizer() {
+			@Override
+			public void customize(final Server server) {
+				final QueuedThreadPool threadPool = server.getBean(QueuedThreadPool.class);
+				threadPool.setMaxThreads(Integer.valueOf(maxThreads));
+				threadPool.setMinThreads(Integer.valueOf(minThreads));
+				threadPool.setIdleTimeout(Integer.valueOf(idleTimeout));
+			}
+		});
+		return factory;
+	}*/
+
 	/*
 	 * readConfigFile
 	 * params : confFileName

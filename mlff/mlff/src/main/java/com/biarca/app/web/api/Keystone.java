@@ -42,6 +42,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+
 import com.biarca.app.Main;
 import com.biarca.app.web.api.Utils.StatusCode;
 
@@ -78,9 +80,8 @@ public class Keystone
 	 * returns : Status code
 	 * 
 	 */
-	public StatusCode getAdminAuthenticationToken()
+	public HttpStatus getAdminAuthenticationToken()
 	{
-		StatusCode status = StatusCode.UNKNOWN;
 		int responseCode = 0;
 		try {
 			ArrayList<NameValuePair> headers = new ArrayList<NameValuePair>();
@@ -139,7 +140,6 @@ public class Keystone
 				LOGGER.info("Admin Authentication status "+ responseCode);
 				if(responseCode == 201)
 				{
-					status = StatusCode.SUCCESS;
 					Header[] headerss = httpResponse.getAllHeaders();
 					for (Header header : headerss)
 						if(header.getName().equals("X-Subject-Token"))
@@ -148,12 +148,11 @@ public class Keystone
 				}
 				else if (responseCode == 401)
 				{
-					status = StatusCode.INVALID_CREDENTIALS;
 					LOGGER.info("Admin authentication failed with : "+ responseCode);
 				}
 				else
 				{
-					LOGGER.info("Admin authentication failed with : "+ status);
+					LOGGER.info("Admin authentication failed with : "+ responseCode);
 				}
 			}
 			catch(Exception e) {
@@ -170,7 +169,7 @@ public class Keystone
 			LOGGER.error(ex.toString());
 		}
 
-		return status;
+		return HttpStatus.valueOf(responseCode);
 	}
 	
 	/*
@@ -281,7 +280,7 @@ public class Keystone
 				responseCode = httpResponse.getStatusLine().getStatusCode();
 				if(responseCode == 200)
 				{
-					status = StatusCode.SUCCESS;				
+					status = StatusCode.SUCCESS;
 					HttpEntity httpEntity = httpResponse.getEntity();
 					if (httpEntity != null) {
 						instream = httpEntity.getContent();
