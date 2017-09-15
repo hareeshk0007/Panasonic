@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.biarca.app</groupId>
 	<artifactId>mlff</artifactId>
-	<version>1.4</version>
+	<version>1.5</version>
 	<packaging>jar</packaging>
 	<name>mlff</name>
 	<description>Demo project for Spring Boot</description>
